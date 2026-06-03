@@ -130,8 +130,20 @@ async function sendToMeta(pixelId, accessToken, eventData, conversationId, inbox
 }
 
 // ─── Process webhook payload ──────────────────────────────────────────────────
+const recentEvents = new Set();
+
 async function processWebhook(payload, client, inboxId) {
   const eventType = payload.event;
+  const targetStage = payload?.changed_attributes?.board_step?.current_value?.name || "";
+  
+  // Chatwoot as vezes dispara 4 vezes seguidas o mesmo evento (bug interno dele)
+  // Criamos uma trava de 5 segundos para ignorar os eventos "gêmeos"
+  const cacheKey = `${inboxId}_${eventType}_${payload.id}_${targetStage}`;
+  if (recentEvents.has(cacheKey)) {
+    return; // Ignora silenciosamente, pois já estamos processando o irmão gêmeo
+  }
+  recentEvents.add(cacheKey);
+  setTimeout(() => recentEvents.delete(cacheKey), 5000);
 
   // ── conversation_created → Lead ──────────────────────────────────────────────
   if (eventType === "conversation_created") {
