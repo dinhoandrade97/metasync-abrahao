@@ -1,0 +1,21 @@
+{
+  "name": "metasync-abrahao",
+  "version": "1.0.0",
+  "description": "Dashboard de integração Chatwoot × Meta Conversions API — Agência Abrahão",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "localtunnel": "^2.0.2"
+  }
+}
