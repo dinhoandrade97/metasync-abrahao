@@ -69,9 +69,8 @@ function hashCity(city) {
 }
 
 // ─── Build Meta CAPI payload ──────────────────────────────────────────────────
-function buildEvent(eventName, { conversationId, contact, dealValue }) {
-  const eventId = `metasync_${conversationId}_${Date.now()}`;
-
+// ─── Build Meta CAPI payload ──────────────────────────────────────────────────
+function buildEvent(eventName, { eventId, conversationId, contact, dealValue }) {
   const { fn, ln } = hashName(contact.name);
   const hashedPhone = hashPhone(contact.phone_number);
   const hashedEmail = sha256(contact.email);
@@ -152,8 +151,9 @@ async function processWebhook(payload, client, inboxId) {
       additional_attributes: sender.additional_attributes || {},
     };
 
+    const eventId = `metasync_${convId}_lead`;
     log("info", inboxId, `Lead | Conv ${convId} | ${contact.name || "desconhecido"}`);
-    const eventData = buildEvent("Lead", { conversationId: convId, contact, dealValue: 0 });
+    const eventData = buildEvent("Lead", { eventId, conversationId: convId, contact, dealValue: 0 });
     await sendToMeta(client.pixelId, client.accessToken, eventData, convId, inboxId);
     return;
   }
@@ -182,7 +182,9 @@ async function processWebhook(payload, client, inboxId) {
     const valueStr = metaEvent === "Purchase" && dealValue ? ` | R$ ${dealValue}` : "";
     log("info", inboxId, `${from} → ${stageName} → ${metaEvent} | ${contact.name || "desconhecido"}${valueStr}`, { taskId, convId });
 
-    const eventData = buildEvent(metaEvent, { conversationId: convId, contact, dealValue });
+    // Usa taskId e nome da etapa no eventId para garantir idempotência caso venham duplicados
+    const eventId = `metasync_task_${taskId}_stage_${sha256(stageName).slice(0, 8)}`;
+    const eventData = buildEvent(metaEvent, { eventId, conversationId: convId, contact, dealValue });
     await sendToMeta(client.pixelId, client.accessToken, eventData, convId, inboxId);
     return;
   }
