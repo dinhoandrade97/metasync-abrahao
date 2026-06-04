@@ -105,6 +105,7 @@ function newClient() {
   document.getElementById("webhook-url-box").style.display = "none";
   renderClientList();
   renderStageMap({});
+  openSettingsModal();
   document.getElementById("f-name").focus();
 }
 
@@ -290,4 +291,26 @@ function toast(msg, type = "ok") {
   el.textContent = msg;
   el.className = `toast show ${type}`;
   setTimeout(() => el.classList.remove("show"), 3000);
+}
+
+/* ─── Mobile Sidebar ─────────────────────────────────────────────────────────── */
+function toggleSidebar(force) {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  if (typeof force === "boolean") {
+    sidebar.classList.toggle("open", force);
+    overlay.classList.toggle("show", force);
+  } else {
+    sidebar.classList.toggle("open");
+    overlay.classList.toggle("show");
+  }
+}
+
+/* ─── Modal Settings ─────────────────────────────────────────────────────────── */
+function openSettingsModal() {
+  document.getElementById("settings-modal").classList.add("show");
+}
+
+function closeSettingsModal() {
+  document.getElementById("settings-modal").classList.remove("show");
 }
