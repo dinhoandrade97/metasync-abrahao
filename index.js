@@ -91,13 +91,14 @@ function buildEvent(eventName, { eventId, conversationId, contact, dealValue }) 
     action_source: "crm",
     event_id:      eventId,
     user_data,
+    custom_data: {
+      lead_source: "chatwoot_metasync"
+    }
   };
 
   if (eventName === "Purchase") {
-    event.custom_data = {
-      value:    parseFloat(dealValue) || 0,
-      currency: "BRL",
-    };
+    event.custom_data.value = parseFloat(dealValue) || 0;
+    event.custom_data.currency = "BRL";
   }
 
   return event;
