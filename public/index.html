@@ -160,6 +160,9 @@
           <p class="panel-sub" id="analytics-subtitle">Performance e faturamento trackeados</p>
         </div>
         <div class="analytics-filters">
+          <select id="analytics-client-select" onchange="changeAnalyticsClient()" class="select-filter" style="font-weight: 600; color: var(--blue); margin-right: 15px;">
+            <option value="">Selecione um cliente...</option>
+          </select>
           <select id="filter-preset" onchange="applyPresetFilter()" class="select-filter">
             <option value="1">Hoje</option>
             <option value="7" selected>Últimos 7 dias</option>

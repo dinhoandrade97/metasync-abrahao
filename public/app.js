@@ -101,6 +101,25 @@ function renderClientList() {
       ${clients[id].name || `Inbox ${id}`}
     </button>
   `).join("");
+
+  const select = document.getElementById("analytics-client-select");
+  if (select) {
+    if (keys.length === 0) {
+      select.innerHTML = `<option value="">Nenhum cliente cadastrado</option>`;
+    } else {
+      select.innerHTML = keys.map(id => `<option value="${id}">${clients[id].name || `Inbox ${id}`}</option>`).join("");
+      if (activeInboxId) select.value = activeInboxId;
+    }
+  }
+}
+
+function changeAnalyticsClient() {
+  const val = document.getElementById("analytics-client-select").value;
+  if (val) {
+    activeInboxId = val;
+    renderClientList(); // Atualiza a cor no sidebar esquerdo
+    loadAnalytics();
+  }
 }
 
 /* ─── Select client ──────────────────────────────────────────────────────────── */
