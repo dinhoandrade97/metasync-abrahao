@@ -317,8 +317,8 @@ function appendLog(data) {
   entry.className = `log-entry ${data.level}`;
   
   let clientName = data.inboxId;
-  if (data.inboxId && window.clients && window.clients[data.inboxId]) {
-    clientName = window.clients[data.inboxId].name;
+  if (data.inboxId && typeof clients !== "undefined" && clients[data.inboxId]) {
+    clientName = clients[data.inboxId].name;
   }
 
   entry.innerHTML = `
