@@ -464,7 +464,11 @@ async function loadAnalytics() {
          d.setDate(d.getDate() - i);
          daysToLoad.push(d.toISOString().split("T")[0]);
        }
-       subtitle.textContent = `Performance dos últimos ${preset} dias trackeados`;
+       if (preset === "1") {
+         subtitle.textContent = "Performance de hoje";
+       } else {
+         subtitle.textContent = `Performance dos últimos ${preset} dias trackeados`;
+       }
     }
     
     daysToLoad.forEach(ds => {
