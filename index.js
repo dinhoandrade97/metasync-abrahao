@@ -70,7 +70,7 @@ function hashCity(city) {
 
 // ─── Build Meta CAPI payload ──────────────────────────────────────────────────
 // ─── Build Meta CAPI payload ──────────────────────────────────────────────────
-function buildEvent(eventName, { eventId, conversationId, contact, dealValue }) {
+function buildEvent(eventName, { eventId, conversationId, contact, dealValue, stageName }) {
   const { fn, ln } = hashName(contact.name);
   const hashedPhone = hashPhone(contact.phone_number);
   const hashedEmail = sha256(contact.email);
@@ -92,7 +92,8 @@ function buildEvent(eventName, { eventId, conversationId, contact, dealValue }) 
     event_id:      eventId,
     user_data,
     custom_data: {
-      lead_source: "chatwoot_metasync"
+      lead_source: "chatwoot_metasync",
+      kanban_stage: stageName || "Novo Lead"
     }
   };
 
@@ -166,7 +167,7 @@ async function processWebhook(payload, client, inboxId) {
 
     const eventId = `metasync_${convId}_lead`;
     log("info", inboxId, `Lead | Conv ${convId} | ${contact.name || "desconhecido"}`);
-    const eventData = buildEvent("Lead", { eventId, conversationId: convId, contact, dealValue: 0 });
+    const eventData = buildEvent("Lead", { eventId, conversationId: convId, contact, dealValue: 0, stageName: "Novo Lead" });
     await sendToMeta(client.pixelId, client.accessToken, eventData, convId, inboxId);
     return;
   }
@@ -197,7 +198,7 @@ async function processWebhook(payload, client, inboxId) {
 
     // Usa taskId e nome da etapa no eventId para garantir idempotência caso venham duplicados
     const eventId = `metasync_task_${taskId}_stage_${sha256(stageName).slice(0, 8)}`;
-    const eventData = buildEvent(metaEvent, { eventId, conversationId: convId, contact, dealValue });
+    const eventData = buildEvent(metaEvent, { eventId, conversationId: convId, contact, dealValue, stageName });
     await sendToMeta(client.pixelId, client.accessToken, eventData, convId, inboxId);
     return;
   }
