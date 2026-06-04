@@ -9,6 +9,8 @@ const fetch    = require("node-fetch");
 // ─── Config ───────────────────────────────────────────────────────────────────
 const PORT           = process.env.PORT || 4000;
 const DATA_FILE      = path.join(__dirname, "data", "clients.json");
+const QUEUE_FILE     = path.join(__dirname, "data", "queue.json");
+const ANALYTICS_FILE = path.join(__dirname, "data", "analytics.json");
 const META_CAPI_BASE = "https://graph.facebook.com/v19.0";
 
 // ─── SSE clients for real-time logs ───────────────────────────────────────────
@@ -33,17 +35,50 @@ function log(level, inboxId, message, extra = {}) {
 }
 
 // ─── Persist helpers ──────────────────────────────────────────────────────────
-function loadClients() {
-  try {
-    return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-  } catch {
-    return {};
-  }
+function loadJSON(file, defaultVal = {}) {
+  try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return defaultVal; }
 }
 
-function saveClients(clients) {
-  fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-  fs.writeFileSync(DATA_FILE, JSON.stringify(clients, null, 2));
+function saveJSON(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+function loadClients() { return loadJSON(DATA_FILE, {}); }
+function saveClients(clients) { saveJSON(DATA_FILE, clients); }
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+function trackAnalytics(inboxId, success, value = 0) {
+  const analytics = loadJSON(ANALYTICS_FILE, {});
+  const dateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  
+  if (!analytics[inboxId]) analytics[inboxId] = {};
+  if (!analytics[inboxId][dateStr]) analytics[inboxId][dateStr] = { success: 0, fail: 0, value: 0 };
+  
+  if (success) {
+    analytics[inboxId][dateStr].success++;
+    if (value > 0) analytics[inboxId][dateStr].value += parseFloat(value);
+  } else {
+    analytics[inboxId][dateStr].fail++;
+  }
+  saveJSON(ANALYTICS_FILE, analytics);
+}
+
+// ─── Queue System ─────────────────────────────────────────────────────────────
+function enqueueJob(inboxId, platform, endpoint, payload, accessToken = "") {
+  const queue = loadJSON(QUEUE_FILE, []);
+  queue.push({
+    id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+    inboxId,
+    platform,
+    endpoint,
+    payload,
+    accessToken,
+    attempts: 0,
+    nextRunAt: Date.now() + 60000 // Retry em 1 min
+  });
+  saveJSON(QUEUE_FILE, queue);
+  log("warn", inboxId, `Falha de rede na plataforma ${platform.toUpperCase()}. Evento colocado na Fila para re-tentativa.`);
 }
 
 // ─── Hashing ──────────────────────────────────────────────────────────────────
@@ -105,11 +140,12 @@ function buildEvent(eventName, { eventId, conversationId, contact, dealValue, st
   return event;
 }
 
-// ─── Send to Meta CAPI ────────────────────────────────────────────────────────
-async function sendToMeta(pixelId, accessToken, eventData, conversationId, inboxId) {
+// ─── Dispatchers (Meta, GA4, TikTok) ─────────────────────────────────────────
+async function sendToMeta(pixelId, accessToken, eventData, conversationId, inboxId, isRetry = false) {
+  if (!pixelId || !accessToken) return;
   const url = `${META_CAPI_BASE}/${pixelId}/events?access_token=${accessToken}`;
   try {
-    const res    = await fetch(url, {
+    const res = await fetch(url, {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ data: [eventData] }),
@@ -118,18 +154,122 @@ async function sendToMeta(pixelId, accessToken, eventData, conversationId, inbox
     if (!res.ok) {
       const errMsg = result?.error?.error_user_msg || result?.error?.message || JSON.stringify(result);
       log("error", inboxId, `CAPI ERROR | Conv ${conversationId} | ${eventData.event_name}: ${errMsg}`);
+      if (!isRetry && res.status >= 500) {
+        enqueueJob(inboxId, "meta", url, { data: [eventData] }, ""); // Note: Token is in URL
+      } else if (!isRetry) {
+        trackAnalytics(inboxId, false);
+      }
     } else {
-      log("success", inboxId, `CAPI OK | Conv ${conversationId} | ${eventData.event_name}`, {
+      log("success", inboxId, `CAPI META OK | Conv ${conversationId} | ${eventData.event_name}${isRetry ? " (Retry)" : ""}`, {
         event_id: eventData.event_id,
         events_received: result.events_received,
-        contact: eventData.user_data.fn ? "com nome" : "sem nome",
         value: eventData.custom_data?.value,
       });
+      if (!isRetry) trackAnalytics(inboxId, true, eventData.custom_data?.value || 0);
     }
   } catch (err) {
     log("error", inboxId, `CAPI FETCH ERROR | Conv ${conversationId}: ${err.message}`);
+    if (!isRetry) enqueueJob(inboxId, "meta", url, { data: [eventData] }, "");
   }
 }
+
+async function sendToTikTok(pixelId, accessToken, eventData, conversationId, inboxId, isRetry = false) {
+  if (!pixelId || !accessToken) return;
+  const ttEvent = {
+    event: eventData.event_name,
+    event_time: eventData.event_time,
+    event_id: eventData.event_id,
+    user: { phone_number: eventData.user_data?.ph?.[0], email: eventData.user_data?.em?.[0] },
+    properties: { value: eventData.custom_data?.value, currency: "BRL" }
+  };
+  const url = `https://business-api.tiktok.com/open_api/v1.3/pixel/track/`;
+  const payload = {
+    pixel_code: pixelId,
+    event: ttEvent.event,
+    event_id: ttEvent.event_id,
+    timestamp: ttEvent.event_time,
+    context: { user: ttEvent.user },
+    properties: ttEvent.properties
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Access-Token": accessToken },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      if (!isRetry && res.status >= 500) enqueueJob(inboxId, "tiktok", url, payload, accessToken);
+      log("error", inboxId, `TIKTOK ERROR | Conv ${conversationId} | Status ${res.status}`);
+    } else {
+      log("success", inboxId, `CAPI TIKTOK OK | Conv ${conversationId} | ${ttEvent.event}${isRetry ? " (Retry)" : ""}`);
+    }
+  } catch (e) {
+    log("error", inboxId, `TIKTOK FETCH ERROR | Conv ${conversationId}: ${e.message}`);
+    if (!isRetry) enqueueJob(inboxId, "tiktok", url, payload, accessToken);
+  }
+}
+
+async function sendToGA4(measurementId, apiSecret, eventData, conversationId, inboxId, isRetry = false) {
+  if (!measurementId || !apiSecret) return;
+  const url = `https://www.google-analytics.com/mp/collect?measurement_id=${measurementId}&api_secret=${apiSecret}`;
+  let ga4EventName = "custom_stage";
+  if (eventData.event_name === "Purchase") ga4EventName = "purchase";
+  else if (eventData.event_name === "Lead") ga4EventName = "generate_lead";
+  
+  const payload = {
+    client_id: String(conversationId),
+    events: [{
+      name: ga4EventName,
+      params: { currency: "BRL", value: eventData.custom_data?.value || 0, transaction_id: eventData.event_id }
+    }]
+  };
+  try {
+    const res = await fetch(url, { method: "POST", body: JSON.stringify(payload) });
+    if (!res.ok) {
+      if (!isRetry && res.status >= 500) enqueueJob(inboxId, "ga4", url, payload, "");
+      log("error", inboxId, `GA4 ERROR | Conv ${conversationId} | Status ${res.status}`);
+    } else {
+      log("success", inboxId, `GA4 OK | Conv ${conversationId} | ${ga4EventName}${isRetry ? " (Retry)" : ""}`);
+    }
+  } catch (e) {
+    log("error", inboxId, `GA4 FETCH ERROR | Conv ${conversationId}: ${e.message}`);
+    if (!isRetry) enqueueJob(inboxId, "ga4", url, payload, "");
+  }
+}
+
+// ─── Queue Processor ──────────────────────────────────────────────────────────
+async function processQueue() {
+  const queue = loadJSON(QUEUE_FILE, []);
+  if (queue.length === 0) return;
+  
+  const now = Date.now();
+  const toProcess = queue.filter(j => j.nextRunAt <= now && j.attempts < 5);
+  const remaining = queue.filter(j => j.nextRunAt > now || j.attempts >= 5);
+  
+  if (toProcess.length > 0) log("info", "system", `Processando ${toProcess.length} eventos encalhados na fila...`);
+  
+  for (const job of toProcess) {
+    job.attempts++;
+    let success = false;
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (job.accessToken && job.platform === "tiktok") headers["Access-Token"] = job.accessToken;
+      
+      const res = await fetch(job.endpoint, { method: "POST", headers, body: JSON.stringify(job.payload) });
+      if (res.ok) success = true;
+    } catch(e) {}
+
+    if (success) {
+      log("success", job.inboxId, `Re-tentativa OK para plataforma ${job.platform.toUpperCase()}`);
+    } else {
+      job.nextRunAt = Date.now() + (Math.pow(2, job.attempts) * 60000); // Backoff: 2m, 4m, 8m...
+      remaining.push(job);
+    }
+  }
+  saveJSON(QUEUE_FILE, remaining);
+}
+setInterval(processQueue, 60000); // Roda a cada 1 minuto
 
 // ─── Process webhook payload ──────────────────────────────────────────────────
 const recentEvents = new Set();
@@ -168,7 +308,13 @@ async function processWebhook(payload, client, inboxId) {
     const eventId = `metasync_${convId}_lead`;
     log("info", inboxId, `Lead | Conv ${convId} | ${contact.name || "desconhecido"}`);
     const eventData = buildEvent("Lead", { eventId, conversationId: convId, contact, dealValue: 0, stageName: "Novo Lead" });
-    await sendToMeta(client.pixelId, client.accessToken, eventData, convId, inboxId);
+    
+    // Dispara para todas as plataformas configuradas em paralelo
+    await Promise.allSettled([
+      sendToMeta(client.pixelId, client.accessToken, eventData, convId, inboxId),
+      sendToTikTok(client.tiktokPixelId, client.tiktokAccessToken, eventData, convId, inboxId),
+      sendToGA4(client.ga4MeasurementId, client.ga4ApiSecret, eventData, convId, inboxId)
+    ]);
     return;
   }
 
@@ -199,7 +345,13 @@ async function processWebhook(payload, client, inboxId) {
     // Usa taskId e nome da etapa no eventId para garantir idempotência caso venham duplicados
     const eventId = `metasync_task_${taskId}_stage_${sha256(stageName).slice(0, 8)}`;
     const eventData = buildEvent(metaEvent, { eventId, conversationId: convId, contact, dealValue, stageName });
-    await sendToMeta(client.pixelId, client.accessToken, eventData, convId, inboxId);
+    
+    // Dispara para todas as plataformas configuradas em paralelo
+    await Promise.allSettled([
+      sendToMeta(client.pixelId, client.accessToken, eventData, convId, inboxId),
+      sendToTikTok(client.tiktokPixelId, client.tiktokAccessToken, eventData, convId, inboxId),
+      sendToGA4(client.ga4MeasurementId, client.ga4ApiSecret, eventData, convId, inboxId)
+    ]);
     return;
   }
 
@@ -223,6 +375,12 @@ app.get("/health", (_req, res) => {
     clients: Object.keys(clients).length,
     ts: new Date().toISOString(),
   });
+});
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+app.get("/api/analytics/:inboxId", authMiddleware, (req, res) => {
+  const analytics = loadJSON(ANALYTICS_FILE, {});
+  res.json(analytics[req.params.inboxId] || {});
 });
 
 // ── Auth Middleware & Login ───────────────────────────────────────────────────
@@ -276,12 +434,19 @@ app.get("/api/clients/full/:inboxId", authMiddleware, (req, res) => {
 });
 
 app.post("/api/clients", authMiddleware, (req, res) => {
-  const { inboxId, name, pixelId, accessToken, webhookSecret, stageMap } = req.body;
+  const { inboxId, name, pixelId, accessToken, webhookSecret, stageMap, tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret } = req.body;
   if (!inboxId || !pixelId || !accessToken) {
     return res.status(400).json({ error: "inboxId, pixelId e accessToken são obrigatórios" });
   }
   const clients = loadClients();
-  clients[String(inboxId)] = { name: name || `Cliente ${inboxId}`, pixelId, accessToken, webhookSecret: webhookSecret || "", stageMap: stageMap || {} };
+  clients[String(inboxId)] = { 
+    name: name || `Cliente ${inboxId}`, 
+    pixelId, accessToken, webhookSecret: webhookSecret || "", stageMap: stageMap || {},
+    tiktokPixelId: tiktokPixelId || "",
+    tiktokAccessToken: tiktokAccessToken || "",
+    ga4MeasurementId: ga4MeasurementId || "",
+    ga4ApiSecret: ga4ApiSecret || ""
+  };
   saveClients(clients);
   log("success", inboxId, `Cliente "${clients[inboxId].name}" salvo`);
   res.json({ ok: true, inboxId });

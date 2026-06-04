@@ -116,6 +116,7 @@ async function selectClient(inboxId) {
     if (res.ok) {
       const data = await res.json();
       fillForm(inboxId, data);
+      loadAnalytics(); // Carrega gráfico
     } else {
       // Use masked version
       fillForm(inboxId, clients[inboxId]);
@@ -132,6 +133,11 @@ function fillForm(inboxId, data) {
   document.getElementById("f-token").value  = data.accessToken || "";
   document.getElementById("f-secret").value = data.webhookSecret || "";
   document.getElementById("f-baseurl").value = data.baseUrl || "";
+  
+  document.getElementById("f-tiktok-pixel").value = data.tiktokPixelId || "";
+  document.getElementById("f-tiktok-token").value = data.tiktokAccessToken || "";
+  document.getElementById("f-ga4-id").value = data.ga4MeasurementId || "";
+  document.getElementById("f-ga4-secret").value = data.ga4ApiSecret || "";
 
   document.getElementById("form-client-title").textContent = data.name || `Inbox ${inboxId}`;
   document.getElementById("badge-connected").style.display = "inline-flex";
@@ -154,6 +160,12 @@ function newClient() {
   document.getElementById("badge-connected").style.display = "none";
   document.getElementById("btn-delete").style.display = "none";
   document.getElementById("webhook-url-box").style.display = "none";
+  
+  document.getElementById("f-tiktok-pixel").value = "";
+  document.getElementById("f-tiktok-token").value = "";
+  document.getElementById("f-ga4-id").value = "";
+  document.getElementById("f-ga4-secret").value = "";
+
   renderClientList();
   renderStageMap({});
   openSettingsModal();
@@ -227,6 +239,11 @@ async function saveClient() {
   const token        = document.getElementById("f-token").value.trim();
   const secret       = document.getElementById("f-secret").value.trim();
   const baseUrl      = document.getElementById("f-baseurl").value.trim().replace(/\/$/, "");
+  
+  const tiktokPixelId     = document.getElementById("f-tiktok-pixel").value.trim();
+  const tiktokAccessToken = document.getElementById("f-tiktok-token").value.trim();
+  const ga4MeasurementId  = document.getElementById("f-ga4-id").value.trim();
+  const ga4ApiSecret      = document.getElementById("f-ga4-secret").value.trim();
 
   if (!inboxId || !pixelId || !token) {
     toast("Preencha Inbox ID, Pixel ID e Access Token", "err"); return;
@@ -238,7 +255,10 @@ async function saveClient() {
     const res = await fetch("/api/clients", {
       method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify({ inboxId, name, pixelId, accessToken: token, webhookSecret: secret, baseUrl, stageMap }),
+      body: JSON.stringify({ 
+        inboxId, name, pixelId, accessToken: token, webhookSecret: secret, baseUrl, stageMap,
+        tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret
+      }),
     });
     if (res.status === 401) return showLogin();
     if (!res.ok) throw new Error();
@@ -373,4 +393,77 @@ function openSettingsModal() {
 
 function closeSettingsModal() {
   document.getElementById("settings-modal").classList.remove("show");
+}
+
+/* ─── Analytics Dashboard ────────────────────────────────────────────────────── */
+let myChart = null;
+
+async function loadAnalytics() {
+  if (!activeInboxId) {
+    document.getElementById("stat-total").textContent = "0";
+    document.getElementById("stat-success-rate").textContent = "0%";
+    document.getElementById("stat-revenue").textContent = "R$ 0,00";
+    if (myChart) myChart.destroy();
+    return;
+  }
+  
+  try {
+    const res = await fetch(`/api/analytics/${activeInboxId}`, { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    
+    const labels = [];
+    const successes = [];
+    const fails = [];
+    let totalSucc = 0;
+    let totalFail = 0;
+    let totalRev = 0;
+    
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split("T")[0];
+      const dayData = data[ds] || { success: 0, fail: 0, value: 0 };
+      
+      labels.push(ds.split("-").slice(1).join("/")); 
+      successes.push(dayData.success);
+      fails.push(dayData.fail);
+      totalSucc += dayData.success;
+      totalFail += dayData.fail;
+      totalRev += dayData.value || 0;
+    }
+    
+    const total = totalSucc + totalFail;
+    const rate = total === 0 ? 0 : Math.round((totalSucc / total) * 100);
+    
+    document.getElementById("stat-total").textContent = totalSucc;
+    document.getElementById("stat-success-rate").textContent = `${rate}%`;
+    document.getElementById("stat-revenue").textContent = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalRev);
+    
+    renderChart(labels, successes, fails);
+  } catch (e) {
+    console.error("Erro estatisticas", e);
+  }
+}
+
+function renderChart(labels, successes, fails) {
+  const ctx = document.getElementById('eventsChart').getContext('2d');
+  if (myChart) myChart.destroy();
+  
+  myChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Enviados c/ Sucesso', data: successes, backgroundColor: '#3b82f6', borderRadius: 4 },
+        { label: 'Falhas (Fila)', data: fails, backgroundColor: '#ef4444', borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { y: { beginAtZero: true, stacked: true }, x: { stacked: true } },
+      plugins: { legend: { labels: { color: '#94a3b8' } } }
+    }
+  });
 }
