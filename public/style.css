@@ -518,6 +518,24 @@ input::placeholder { color: var(--text-muted); }
   gap: 20px;
   margin-bottom: 30px;
 }
+.analytics-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.select-filter, .input-date {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 6px;
+  outline: none;
+  font-family: inherit;
+  font-size: 13px;
+}
+.select-filter:focus, .input-date:focus {
+  border-color: var(--blue);
+}
 .stat-card {
   background: var(--bg-card);
   border: 1px solid var(--border);

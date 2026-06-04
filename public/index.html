@@ -154,12 +154,26 @@
 
     <!-- ── PANEL: ANALYTICS ── -->
     <div id="panel-analytics" class="panel">
-      <div class="panel-header">
+      <div class="panel-header" style="flex-wrap: wrap; gap: 15px;">
         <div>
           <h1 class="panel-title">Estatísticas do Cliente</h1>
-          <p class="panel-sub">Performance e faturamento dos últimos 7 dias trackeados</p>
+          <p class="panel-sub" id="analytics-subtitle">Performance e faturamento trackeados</p>
         </div>
-        <button class="btn-secondary" onclick="loadAnalytics()">Atualizar</button>
+        <div class="analytics-filters">
+          <select id="filter-preset" onchange="applyPresetFilter()" class="select-filter">
+            <option value="7">Últimos 7 dias</option>
+            <option value="15">Últimos 15 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="all">Todo o período</option>
+            <option value="custom">Personalizado (Calendário)</option>
+          </select>
+          <div id="filter-custom-dates" style="display:none; align-items:center; gap:8px;">
+            <input type="date" id="filter-start" class="input-date" />
+            <span style="color:var(--text-muted)">até</span>
+            <input type="date" id="filter-end" class="input-date" />
+          </div>
+          <button class="btn-secondary" onclick="loadAnalytics()">Atualizar</button>
+        </div>
       </div>
       
       <div class="analytics-cards">

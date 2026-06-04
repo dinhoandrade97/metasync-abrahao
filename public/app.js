@@ -398,6 +398,17 @@ function closeSettingsModal() {
 /* ─── Analytics Dashboard ────────────────────────────────────────────────────── */
 let myChart = null;
 
+function applyPresetFilter() {
+  const preset = document.getElementById("filter-preset").value;
+  const customDiv = document.getElementById("filter-custom-dates");
+  if (preset === "custom") {
+    customDiv.style.display = "flex";
+  } else {
+    customDiv.style.display = "none";
+    loadAnalytics();
+  }
+}
+
 async function loadAnalytics() {
   if (!activeInboxId) {
     document.getElementById("stat-total").textContent = "0";
@@ -419,19 +430,52 @@ async function loadAnalytics() {
     let totalFail = 0;
     let totalRev = 0;
     
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const ds = d.toISOString().split("T")[0];
+    const preset = document.getElementById("filter-preset").value;
+    const subtitle = document.getElementById("analytics-subtitle");
+    let daysToLoad = [];
+    
+    if (preset === "all") {
+       daysToLoad = Object.keys(data).sort();
+       subtitle.textContent = "Performance de todo o período trackeado";
+    } else if (preset === "custom") {
+       const start = document.getElementById("filter-start").value;
+       const end = document.getElementById("filter-end").value;
+       if (start && end) {
+          const keys = Object.keys(data).filter(k => k >= start && k <= end).sort();
+          if (keys.length > 0) {
+            daysToLoad = keys;
+          } else {
+            let curr = new Date(start + "T00:00:00Z");
+            const last = new Date(end + "T00:00:00Z");
+            while (curr <= last) {
+               daysToLoad.push(curr.toISOString().split("T")[0]);
+               curr.setDate(curr.getDate() + 1);
+            }
+          }
+          subtitle.textContent = `Performance de ${start.split("-").reverse().join("/")} até ${end.split("-").reverse().join("/")}`;
+       } else {
+          toast("Selecione as datas de início e fim", "warn");
+          return;
+       }
+    } else {
+       const numDays = parseInt(preset);
+       for (let i = numDays - 1; i >= 0; i--) {
+         const d = new Date();
+         d.setDate(d.getDate() - i);
+         daysToLoad.push(d.toISOString().split("T")[0]);
+       }
+       subtitle.textContent = `Performance dos últimos ${preset} dias trackeados`;
+    }
+    
+    daysToLoad.forEach(ds => {
       const dayData = data[ds] || { success: 0, fail: 0, value: 0 };
-      
       labels.push(ds.split("-").slice(1).join("/")); 
       successes.push(dayData.success);
       fails.push(dayData.fail);
       totalSucc += dayData.success;
       totalFail += dayData.fail;
       totalRev += dayData.value || 0;
-    }
+    });
     
     const total = totalSucc + totalFail;
     const rate = total === 0 ? 0 : Math.round((totalSucc / total) * 100);
