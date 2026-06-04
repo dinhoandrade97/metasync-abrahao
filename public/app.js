@@ -518,13 +518,17 @@ async function loadAnalytics() {
     if (Object.keys(eventsBreakdown).length === 0) {
       breakdownEl.innerHTML = '<span style="color:var(--text-muted)">Nenhum</span>';
     } else {
-      breakdownEl.innerHTML = Object.entries(eventsBreakdown).map(([name, count]) => {
-        let colorCode = "#7d8590"; let bgCode = "transparent"; let borderCode = "#30363d";
-        if (name === "Purchase") { colorCode = "#4ade80"; bgCode = "rgba(63,185,80,.15)"; borderCode = "rgba(63,185,80,.3)"; }
-        else if (name === "Lead") { colorCode = "#60a5fa"; bgCode = "rgba(31,120,255,.15)"; borderCode = "rgba(31,120,255,.3)"; }
-        else if (name === "Schedule") { colorCode = "#c084fc"; bgCode = "rgba(139,92,246,.15)"; borderCode = "rgba(139,92,246,.3)"; }
-        else if (name === "ViewContent") { colorCode = "#fb923c"; bgCode = "rgba(240,136,62,.15)"; borderCode = "rgba(240,136,62,.3)"; }
-        return `<span style="background:${bgCode}; color:${colorCode}; border: 1px solid ${borderCode}; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600;">${name}: ${count}</span>`;
+      breakdownEl.innerHTML = Object.entries(eventsBreakdown).map(([name, count], idx) => {
+        const colors = [
+          { color: "#60a5fa", bg: "rgba(31,120,255,.15)", border: "rgba(31,120,255,.3)" },
+          { color: "#4ade80", bg: "rgba(63,185,80,.15)", border: "rgba(63,185,80,.3)" },
+          { color: "#c084fc", bg: "rgba(139,92,246,.15)", border: "rgba(139,92,246,.3)" },
+          { color: "#fb923c", bg: "rgba(240,136,62,.15)", border: "rgba(240,136,62,.3)" },
+          { color: "#f87171", bg: "rgba(239,68,68,.15)",  border: "rgba(239,68,68,.3)" },
+          { color: "#fbbf24", bg: "rgba(245,158,11,.15)", border: "rgba(245,158,11,.3)" }
+        ];
+        const theme = colors[idx % colors.length];
+        return `<span style="background:${theme.bg}; color:${theme.color}; border: 1px solid ${theme.border}; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; text-transform:capitalize;">${name}: ${count}</span>`;
       }).join("");
     }
     

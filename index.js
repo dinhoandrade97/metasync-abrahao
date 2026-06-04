@@ -181,7 +181,8 @@ async function sendToMeta(pixelId, accessToken, eventData, conversationId, inbox
       if (!isRetry && res.status >= 500) {
         enqueueJob(inboxId, "meta", url, { data: [eventData] }, ""); // Note: Token is in URL
       } else if (!isRetry) {
-        trackAnalytics(inboxId, false, 0, eventData.event_name);
+        const stageName = eventData.custom_data?.kanban_stage || eventData.event_name;
+        trackAnalytics(inboxId, false, 0, stageName);
       }
     } else {
       log("success", inboxId, `CAPI META OK | Conv ${conversationId} | ${eventData.event_name}${isRetry ? " (Retry)" : ""}`, {
@@ -189,7 +190,10 @@ async function sendToMeta(pixelId, accessToken, eventData, conversationId, inbox
         events_received: result.events_received,
         value: eventData.custom_data?.value,
       });
-      if (!isRetry) trackAnalytics(inboxId, true, eventData.custom_data?.value || 0, eventData.event_name);
+      if (!isRetry) {
+        const stageName = eventData.custom_data?.kanban_stage || eventData.event_name;
+        trackAnalytics(inboxId, true, eventData.custom_data?.value || 0, stageName);
+      }
     }
   } catch (err) {
     log("error", inboxId, `CAPI FETCH ERROR | Conv ${conversationId}: ${err.message}`);
