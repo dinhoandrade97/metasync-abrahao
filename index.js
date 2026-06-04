@@ -290,6 +290,12 @@ app.post("/webhook/:inboxId", async (req, res) => {
     return;
   }
 
+  // Verifica se o evento pertence a este inboxId
+  const actualInboxId = req.body.inbox_id || req.body.conversation?.inbox_id || req.body.inbox?.id;
+  if (actualInboxId && String(actualInboxId) !== String(inboxId)) {
+    return res.status(200).send("OK - Ignored, belongs to another inbox");
+  }
+
   // Verifica assinatura se secret configurado
   if (client.webhookSecret) {
     const raw = req.headers["x-chatwoot-signature"];
