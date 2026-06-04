@@ -48,16 +48,19 @@ function loadClients() { return loadJSON(DATA_FILE, {}); }
 function saveClients(clients) { saveJSON(DATA_FILE, clients); }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
-function trackAnalytics(inboxId, success, value = 0) {
+function trackAnalytics(inboxId, success, value = 0, eventName = "Unknown") {
   const analytics = loadJSON(ANALYTICS_FILE, {});
   const dateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
   
   if (!analytics[inboxId]) analytics[inboxId] = {};
-  if (!analytics[inboxId][dateStr]) analytics[inboxId][dateStr] = { success: 0, fail: 0, value: 0 };
+  if (!analytics[inboxId][dateStr]) analytics[inboxId][dateStr] = { success: 0, fail: 0, value: 0, events: {} };
   
   if (success) {
     analytics[inboxId][dateStr].success++;
     if (value > 0) analytics[inboxId][dateStr].value += parseFloat(value);
+    
+    analytics[inboxId][dateStr].events = analytics[inboxId][dateStr].events || {};
+    analytics[inboxId][dateStr].events[eventName] = (analytics[inboxId][dateStr].events[eventName] || 0) + 1;
   } else {
     analytics[inboxId][dateStr].fail++;
   }
@@ -178,7 +181,7 @@ async function sendToMeta(pixelId, accessToken, eventData, conversationId, inbox
       if (!isRetry && res.status >= 500) {
         enqueueJob(inboxId, "meta", url, { data: [eventData] }, ""); // Note: Token is in URL
       } else if (!isRetry) {
-        trackAnalytics(inboxId, false);
+        trackAnalytics(inboxId, false, 0, eventData.event_name);
       }
     } else {
       log("success", inboxId, `CAPI META OK | Conv ${conversationId} | ${eventData.event_name}${isRetry ? " (Retry)" : ""}`, {
@@ -186,7 +189,7 @@ async function sendToMeta(pixelId, accessToken, eventData, conversationId, inbox
         events_received: result.events_received,
         value: eventData.custom_data?.value,
       });
-      if (!isRetry) trackAnalytics(inboxId, true, eventData.custom_data?.value || 0);
+      if (!isRetry) trackAnalytics(inboxId, true, eventData.custom_data?.value || 0, eventData.event_name);
     }
   } catch (err) {
     log("error", inboxId, `CAPI FETCH ERROR | Conv ${conversationId}: ${err.message}`);

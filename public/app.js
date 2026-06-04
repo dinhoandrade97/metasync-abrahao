@@ -448,6 +448,7 @@ async function loadAnalytics() {
     let totalSucc = 0;
     let totalFail = 0;
     let totalRev = 0;
+    let eventsBreakdown = {};
     
     const preset = document.getElementById("filter-preset").value;
     const subtitle = document.getElementById("analytics-subtitle");
@@ -498,6 +499,12 @@ async function loadAnalytics() {
       totalSucc += dayData.success;
       totalFail += dayData.fail;
       totalRev += dayData.value || 0;
+      
+      if (dayData.events) {
+        Object.keys(dayData.events).forEach(ev => {
+          eventsBreakdown[ev] = (eventsBreakdown[ev] || 0) + dayData.events[ev];
+        });
+      }
     });
     
     const total = totalSucc + totalFail;
@@ -506,6 +513,20 @@ async function loadAnalytics() {
     document.getElementById("stat-total").textContent = totalSucc;
     document.getElementById("stat-success-rate").textContent = `${rate}%`;
     document.getElementById("stat-revenue").textContent = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalRev);
+    
+    const breakdownEl = document.getElementById("stat-events-breakdown");
+    if (Object.keys(eventsBreakdown).length === 0) {
+      breakdownEl.innerHTML = '<span style="color:var(--text-muted)">Nenhum</span>';
+    } else {
+      breakdownEl.innerHTML = Object.entries(eventsBreakdown).map(([name, count]) => {
+        let colorCode = "#7d8590"; let bgCode = "transparent"; let borderCode = "#30363d";
+        if (name === "Purchase") { colorCode = "#4ade80"; bgCode = "rgba(63,185,80,.15)"; borderCode = "rgba(63,185,80,.3)"; }
+        else if (name === "Lead") { colorCode = "#60a5fa"; bgCode = "rgba(31,120,255,.15)"; borderCode = "rgba(31,120,255,.3)"; }
+        else if (name === "Schedule") { colorCode = "#c084fc"; bgCode = "rgba(139,92,246,.15)"; borderCode = "rgba(139,92,246,.3)"; }
+        else if (name === "ViewContent") { colorCode = "#fb923c"; bgCode = "rgba(240,136,62,.15)"; borderCode = "rgba(240,136,62,.3)"; }
+        return `<span style="background:${bgCode}; color:${colorCode}; border: 1px solid ${borderCode}; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600;">${name}: ${count}</span>`;
+      }).join("");
+    }
     
     renderChart(labels, successes, fails);
   } catch (e) {
