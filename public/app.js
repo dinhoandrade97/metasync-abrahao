@@ -261,10 +261,16 @@ function appendLog(data) {
   const date = new Date(data.ts).toLocaleDateString("pt-BR");
   const entry = document.createElement("div");
   entry.className = `log-entry ${data.level}`;
+  
+  let clientName = data.inboxId;
+  if (data.inboxId && window.clients && window.clients[data.inboxId]) {
+    clientName = window.clients[data.inboxId].name;
+  }
+
   entry.innerHTML = `
     <span class="log-ts">${date} ${ts}</span>
     <span class="log-level">${data.level}</span>
-    <span class="log-inbox">${data.inboxId}</span>
+    <span class="log-inbox">${clientName}</span>
     <span class="log-msg">${data.message}${data.events_received !== undefined ? ` — <b>events_received: ${data.events_received}</b>` : ""}${data.value ? ` | R$ ${data.value}` : ""}</span>
   `;
   container.appendChild(entry);
