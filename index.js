@@ -480,7 +480,20 @@ app.delete("/api/clients/:inboxId", authMiddleware, (req, res) => {
   const name = clients[inboxId].name;
   delete clients[inboxId];
   saveClients(clients);
-  log("info", inboxId, `Cliente "${name}" removido`);
+
+  // Limpa Analytics e Fila
+  const analyticsData = loadJSON(ANALYTICS_FILE, {});
+  if (analyticsData[inboxId]) {
+    delete analyticsData[inboxId];
+    saveJSON(ANALYTICS_FILE, analyticsData);
+  }
+  let queue = loadJSON(QUEUE_FILE, []);
+  if (queue.some(j => j.inboxId === inboxId)) {
+    queue = queue.filter(j => j.inboxId !== inboxId);
+    saveJSON(QUEUE_FILE, queue);
+  }
+
+  log("info", inboxId, `Cliente "${name}" e todos os seus dados locais foram removidos`);
   res.json({ ok: true });
 });
 
