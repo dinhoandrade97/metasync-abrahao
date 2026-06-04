@@ -67,8 +67,29 @@ function trackAnalytics(inboxId, success, value = 0) {
 // ─── Queue System ─────────────────────────────────────────────────────────────
 function enqueueJob(inboxId, platform, endpoint, payload, accessToken = "") {
   const queue = loadJSON(QUEUE_FILE, []);
+  
+  // 1. Extrai o event_id exato do payload para evitar duplicatas na fila
+  let eventId = null;
+  if (platform === "meta" && payload.data && payload.data[0]) {
+    eventId = payload.data[0].event_id;
+  } else if (platform === "tiktok" && payload.event_id) {
+    eventId = payload.event_id;
+  } else if (platform === "ga4" && payload.events && payload.events[0].params) {
+    eventId = payload.events[0].params.transaction_id;
+  }
+
+  // 2. Se já existir um evento com esse exato ID para essa plataforma na fila, ignoramos
+  if (eventId) {
+    const isDuplicate = queue.some(j => j.platform === platform && j.eventId === eventId);
+    if (isDuplicate) {
+      log("info", inboxId, `Fila Segura: Evento ${eventId} já está aguardando re-tentativa na plataforma ${platform.toUpperCase()}. Duplicata evitada.`);
+      return;
+    }
+  }
+
   queue.push({
     id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
+    eventId,
     inboxId,
     platform,
     endpoint,
@@ -78,7 +99,7 @@ function enqueueJob(inboxId, platform, endpoint, payload, accessToken = "") {
     nextRunAt: Date.now() + 60000 // Retry em 1 min
   });
   saveJSON(QUEUE_FILE, queue);
-  log("warn", inboxId, `Falha de rede na plataforma ${platform.toUpperCase()}. Evento colocado na Fila para re-tentativa.`);
+  log("warn", inboxId, `Falha na plataforma ${platform.toUpperCase()}. Evento colocado na Fila (Retry em 1m).`);
 }
 
 // ─── Hashing ──────────────────────────────────────────────────────────────────
