@@ -223,8 +223,27 @@ app.get("/health", (_req, res) => {
   });
 });
 
+// ── Auth Middleware & Login ───────────────────────────────────────────────────
+const ADMIN_TOKEN = "metasync_admin_secret_token";
+
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body;
+  if (username === "admin" && password === "Agencia#@!321") {
+    return res.json({ token: ADMIN_TOKEN });
+  }
+  res.status(401).json({ error: "Credenciais inválidas" });
+});
+
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization || `Bearer ${req.query.token || ""}`;
+  if (authHeader.replace("Bearer ", "") === ADMIN_TOKEN) {
+    return next();
+  }
+  res.status(401).json({ error: "Não autorizado" });
+}
+
 // ── SSE — real-time logs ──────────────────────────────────────────────────────
-app.get("/api/logs/stream", (req, res) => {
+app.get("/api/logs/stream", authMiddleware, (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -235,7 +254,7 @@ app.get("/api/logs/stream", (req, res) => {
 });
 
 // ── CRUD Clients ──────────────────────────────────────────────────────────────
-app.get("/api/clients", (_req, res) => {
+app.get("/api/clients", authMiddleware, (_req, res) => {
   const clients = loadClients();
   // Mascara o access token
   const safe = Object.fromEntries(
@@ -247,14 +266,14 @@ app.get("/api/clients", (_req, res) => {
   res.json(safe);
 });
 
-app.get("/api/clients/full/:inboxId", (req, res) => {
+app.get("/api/clients/full/:inboxId", authMiddleware, (req, res) => {
   const clients = loadClients();
   const client  = clients[req.params.inboxId];
   if (!client) return res.status(404).json({ error: "não encontrado" });
   res.json(client); // token completo
 });
 
-app.post("/api/clients", (req, res) => {
+app.post("/api/clients", authMiddleware, (req, res) => {
   const { inboxId, name, pixelId, accessToken, webhookSecret, stageMap } = req.body;
   if (!inboxId || !pixelId || !accessToken) {
     return res.status(400).json({ error: "inboxId, pixelId e accessToken são obrigatórios" });
@@ -266,7 +285,7 @@ app.post("/api/clients", (req, res) => {
   res.json({ ok: true, inboxId });
 });
 
-app.delete("/api/clients/:inboxId", (req, res) => {
+app.delete("/api/clients/:inboxId", authMiddleware, (req, res) => {
   const clients = loadClients();
   const { inboxId } = req.params;
   if (!clients[inboxId]) return res.status(404).json({ error: "Cliente não encontrado" });

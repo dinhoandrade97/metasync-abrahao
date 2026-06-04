@@ -3,13 +3,61 @@ let clients    = {};
 let activeInboxId = null;
 let logCount   = 0;
 let logPanel   = false;
+let authToken  = localStorage.getItem("metasync_token") || "";
+
+function getAuthHeaders() {
+  return {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${authToken}`
+  };
+}
+
+function showLogin() {
+  localStorage.removeItem("metasync_token");
+  authToken = "";
+  document.getElementById("login-overlay").classList.add("show");
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const user = document.getElementById("login-user").value.trim();
+  const pass = document.getElementById("login-pass").value.trim();
+  const btn = document.getElementById("btn-login");
+  btn.textContent = "Aguarde...";
+  
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, password: pass })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      authToken = data.token;
+      localStorage.setItem("metasync_token", authToken);
+      document.getElementById("login-overlay").classList.remove("show");
+      loadClients();
+      connectSSE();
+    } else {
+      toast("Usuário ou senha incorretos", "err");
+    }
+  } catch (err) {
+    toast("Erro ao conectar no servidor", "err");
+  }
+  btn.textContent = "Entrar";
+}
 
 const META_EVENTS = ["Lead", "Schedule", "ViewContent", "Purchase"];
 
 /* ─── Init ───────────────────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {
-  loadClients();
-  connectSSE();
+  if (!authToken) {
+    showLogin();
+  } else {
+    document.getElementById("login-overlay").classList.remove("show");
+    loadClients();
+    connectSSE();
+  }
 });
 
 /* ─── Panel nav ──────────────────────────────────────────────────────────────── */
@@ -29,8 +77,10 @@ function showPanel(name) {
 
 /* ─── Load clients ───────────────────────────────────────────────────────────── */
 async function loadClients() {
+  if (!authToken) return;
   try {
-    const res = await fetch("/api/clients");
+    const res = await fetch("/api/clients", { headers: getAuthHeaders() });
+    if (res.status === 401) return showLogin();
     clients = await res.json();
     renderClientList();
   } catch (e) {
@@ -61,7 +111,8 @@ async function selectClient(inboxId) {
 
   // Re-fetch to get full token
   try {
-    const res = await fetch(`/api/clients/full/${inboxId}`);
+    const res = await fetch(`/api/clients/full/${inboxId}`, { headers: getAuthHeaders() });
+    if (res.status === 401) return showLogin();
     if (res.ok) {
       const data = await res.json();
       fillForm(inboxId, data);
@@ -186,9 +237,10 @@ async function saveClient() {
   try {
     const res = await fetch("/api/clients", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getAuthHeaders(),
       body: JSON.stringify({ inboxId, name, pixelId, accessToken: token, webhookSecret: secret, baseUrl, stageMap }),
     });
+    if (res.status === 401) return showLogin();
     if (!res.ok) throw new Error();
     activeInboxId = inboxId;
     await loadClients();
@@ -207,7 +259,8 @@ async function deleteClient() {
   if (!activeInboxId) return;
   if (!confirm(`Remover cliente "${clients[activeInboxId]?.name}"?`)) return;
   try {
-    await fetch(`/api/clients/${activeInboxId}`, { method: "DELETE" });
+    const res = await fetch(`/api/clients/${activeInboxId}`, { method: "DELETE", headers: getAuthHeaders() });
+    if (res.status === 401) return showLogin();
     activeInboxId = null;
     await loadClients();
     newClient();
@@ -240,8 +293,9 @@ function toggleToken() {
 /* ─── SSE Logs ───────────────────────────────────────────────────────────────── */
 let currentES = null;
 function connectSSE() {
+  if (!authToken) return;
   if (currentES) currentES.close();
-  currentES = new EventSource("/api/logs/stream");
+  currentES = new EventSource(`/api/logs/stream?token=${authToken}`);
   currentES.onmessage = e => {
     const data = JSON.parse(e.data);
     appendLog(data);

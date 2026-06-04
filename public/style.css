@@ -487,3 +487,26 @@ input::placeholder { color: var(--text-muted); }
   display: flex; justify-content: flex-end; background: var(--surface2);
   border-radius: 0 0 var(--radius) var(--radius);
 }
+/* ─── Login ──────────────────────────────────────────────────────────────────── */
+.login-overlay {
+  position: fixed; inset: 0; background: rgba(13, 17, 23, 0.85);
+  backdrop-filter: blur(10px); z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; pointer-events: none; transition: opacity 0.3s;
+}
+.login-overlay.show { opacity: 1; pointer-events: auto; }
+
+.login-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 32px;
+  width: 100%; max-width: 360px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+  transform: translateY(20px); transition: transform 0.3s;
+}
+.login-overlay.show .login-box { transform: translateY(0); }
+
+.login-logo { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 8px; }
+.login-logo img { width: 40px; height: 40px; border-radius: 8px; }
+.login-logo h2 { font-size: 20px; font-weight: 700; color: var(--text); }
+
+.login-sub { text-align: center; color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
