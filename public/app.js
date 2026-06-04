@@ -237,13 +237,18 @@ function toggleToken() {
 }
 
 /* ─── SSE Logs ───────────────────────────────────────────────────────────────── */
+let currentES = null;
 function connectSSE() {
-  const es = new EventSource("/api/logs/stream");
-  es.onmessage = e => {
+  if (currentES) currentES.close();
+  currentES = new EventSource("/api/logs/stream");
+  currentES.onmessage = e => {
     const data = JSON.parse(e.data);
     appendLog(data);
   };
-  es.onerror = () => setTimeout(connectSSE, 3000);
+  currentES.onerror = () => {
+    currentES.close();
+    setTimeout(connectSSE, 3000);
+  };
 }
 
 function appendLog(data) {
