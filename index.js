@@ -143,6 +143,7 @@ function buildEvent(eventName, { eventId, conversationId, contact, dealValue, st
   if (ln)          user_data.ln = [ln];
   if (city)        user_data.ct = [hashCity(city)];
   if (state)       user_data.st = [sha256(String(state).toLowerCase().slice(0, 2))];
+  if (contact.id)  user_data.external_id = [sha256(String(contact.id))];
 
   const event = {
     event_name:    eventName,
