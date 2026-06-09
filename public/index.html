@@ -213,7 +213,12 @@
           <h1 class="panel-title">Logs em Tempo Real</h1>
           <p class="panel-sub">Todos os eventos recebidos e enviados à Meta</p>
         </div>
-        <button class="btn-secondary" onclick="clearLogs()">Limpar</button>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <select id="logs-client-select" onchange="filterLogs()" class="select-filter" style="font-weight: 600; color: var(--blue);">
+            <option value="">Todos os clientes</option>
+          </select>
+          <button class="btn-secondary" onclick="clearLogs()">Limpar</button>
+        </div>
       </div>
       <div class="log-container" id="log-container">
         <div class="log-empty">Aguardando eventos...</div>
@@ -317,6 +322,6 @@
   <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

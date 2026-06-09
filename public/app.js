@@ -110,6 +110,13 @@ function renderClientList() {
       select.innerHTML = keys.map(id => `<option value="${id}">${clients[id].name || `Inbox ${id}`}</option>`).join("");
       if (activeInboxId) select.value = activeInboxId;
     }
+    
+    const logSelect = document.getElementById("logs-client-select");
+    if (logSelect) {
+      const prevVal = logSelect.value;
+      logSelect.innerHTML = `<option value="">Todos os clientes</option>` + keys.map(id => `<option value="${id}">${clients[id].name || `Inbox ${id}`}</option>`).join("");
+      logSelect.value = prevVal;
+    }
   }
 }
 
@@ -345,6 +352,24 @@ function connectSSE() {
   };
 }
 
+function filterLogs() {
+  const selectedInboxId = document.getElementById("logs-client-select")?.value;
+  const container = document.getElementById("log-container");
+  const entries = container.querySelectorAll(".log-entry");
+  
+  entries.forEach(entry => {
+    if (!selectedInboxId) {
+      entry.style.display = "flex";
+    } else {
+      if (entry.dataset.inboxId === selectedInboxId || entry.dataset.inboxId === "system") {
+        entry.style.display = "flex";
+      } else {
+        entry.style.display = "none";
+      }
+    }
+  });
+}
+
 function appendLog(data) {
   const container = document.getElementById("log-container");
   const empty = container.querySelector(".log-empty");
@@ -354,6 +379,7 @@ function appendLog(data) {
   const date = new Date(data.ts).toLocaleDateString("pt-BR");
   const entry = document.createElement("div");
   entry.className = `log-entry ${data.level}`;
+  entry.dataset.inboxId = data.inboxId || "system";
   
   let clientName = data.inboxId;
   if (data.inboxId && typeof clients !== "undefined" && clients[data.inboxId]) {
@@ -366,6 +392,13 @@ function appendLog(data) {
     <span class="log-inbox">${clientName}</span>
     <span class="log-msg">${data.message}${data.events_received !== undefined ? ` — <b>events_received: ${data.events_received}</b>` : ""}${data.value ? ` | R$ ${data.value}` : ""}</span>
   `;
+  
+  // Hide if it doesn't match current filter
+  const selectedInboxId = document.getElementById("logs-client-select")?.value;
+  if (selectedInboxId && selectedInboxId !== entry.dataset.inboxId && entry.dataset.inboxId !== "system") {
+    entry.style.display = "none";
+  }
+  
   container.appendChild(entry);
   container.scrollTop = container.scrollHeight;
 
