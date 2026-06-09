@@ -368,6 +368,12 @@ async function processWebhook(payload, client, inboxId) {
       return;
     }
 
+    // Prevenção contra disparo duplo (conversation_created já mandou Lead)
+    if (!from && metaEvent === "Lead") {
+      log("info", inboxId, `Ignorado: Tarefa recém-criada na etapa "${stageName}" (Lead). O evento já foi enviado na abertura da conversa.`);
+      return;
+    }
+
     const valueStr = metaEvent === "Purchase" && dealValue ? ` | R$ ${dealValue}` : "";
     log("info", inboxId, `${from} → ${stageName} → ${metaEvent} | ${contact.name || "desconhecido"}${valueStr}`, { taskId, convId });
 
