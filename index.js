@@ -511,17 +511,19 @@ app.post("/webhook/:inboxId", async (req, res) => {
   const clients = loadClients();
   const client  = clients[inboxId];
 
-  res.json({ status: "ok" });
-
   if (!client) {
     log("warn", inboxId, `Webhook recebido para inbox ${inboxId} não cadastrado`);
-    return;
+    return res.status(200).json({ status: "ignored", reason: "not registered" });
   }
 
   // Verifica se o evento pertence a este inboxId
-  const actualInboxId = req.body.inbox_id || req.body.conversation?.inbox_id || req.body.inbox?.id;
+  const actualInboxId = req.body.inbox_id || 
+                        req.body.conversation?.inbox_id || 
+                        req.body.inbox?.id || 
+                        req.body.conversations?.[0]?.inbox_id;
+                        
   if (actualInboxId && String(actualInboxId) !== String(inboxId)) {
-    return res.status(200).send("OK - Ignored, belongs to another inbox");
+    return res.status(200).json({ status: "ignored", reason: "belongs to another inbox" });
   }
 
   // Verifica assinatura se secret configurado
@@ -544,6 +546,8 @@ app.post("/webhook/:inboxId", async (req, res) => {
   } catch (err) {
     log("error", inboxId, `Erro ao processar: ${err.message}`);
   }
+  
+  return res.status(200).json({ status: "ok" });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
