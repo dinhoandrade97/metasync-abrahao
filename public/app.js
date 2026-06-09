@@ -445,6 +445,7 @@ async function loadAnalytics() {
     const labels = [];
     const successes = [];
     const fails = [];
+    const dailyEvents = [];
     let totalSucc = 0;
     let totalFail = 0;
     let totalRev = 0;
@@ -499,6 +500,7 @@ async function loadAnalytics() {
       totalSucc += dayData.success;
       totalFail += dayData.fail;
       totalRev += dayData.value || 0;
+      dailyEvents.push(dayData.events || {});
       
       if (dayData.events) {
         Object.keys(dayData.events).forEach(ev => {
@@ -532,13 +534,13 @@ async function loadAnalytics() {
       }).join("");
     }
     
-    renderChart(labels, successes, fails);
+    renderChart(labels, successes, fails, dailyEvents);
   } catch (e) {
     console.error("Erro estatisticas", e);
   }
 }
 
-function renderChart(labels, successes, fails) {
+function renderChart(labels, successes, fails, dailyEvents = []) {
   const ctx = document.getElementById('eventsChart').getContext('2d');
   if (myChart) myChart.destroy();
   
@@ -555,7 +557,24 @@ function renderChart(labels, successes, fails) {
       responsive: true,
       maintainAspectRatio: false,
       scales: { y: { beginAtZero: true, stacked: true }, x: { stacked: true } },
-      plugins: { legend: { labels: { color: '#94a3b8' } } }
+      plugins: { 
+        legend: { labels: { color: '#94a3b8' } },
+        tooltip: {
+          callbacks: {
+            afterBody: function(context) {
+              const dataIndex = context[0].dataIndex;
+              const events = dailyEvents[dataIndex];
+              if (!events || Object.keys(events).length === 0) return null;
+              
+              let lines = ['', 'Eventos daquele dia:'];
+              for (const [name, count] of Object.entries(events)) {
+                lines.push(`  • ${name}: ${count}`);
+              }
+              return lines;
+            }
+          }
+        }
+      }
     }
   });
 }
