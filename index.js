@@ -325,6 +325,13 @@ async function processWebhook(payload, client, inboxId) {
       return;
     }
 
+    // Ignora conversas criadas ativamente pelo agente (Outbound)
+    const isOutbound = payload?.messages?.some(m => [1, 2].includes(m.message_type)) && !payload?.messages?.some(m => m.message_type === 0);
+    if (isOutbound) {
+      log("info", inboxId, "Conversa iniciada pelo atendente (Outbound) — Evento Lead ignorado");
+      return;
+    }
+
     const sender = payload?.meta?.sender ?? {};
     const convId = payload?.id ?? payload?.conversation?.id;
     const contact = {
