@@ -47,7 +47,11 @@ async function handleLogin(e) {
   btn.textContent = "Entrar";
 }
 
-const META_EVENTS = ["Lead", "Schedule", "ViewContent", "Purchase"];
+const META_EVENTS = [
+  "Lead", "Schedule", "ViewContent", "Purchase", 
+  "InitiateCheckout", "AddPaymentInfo", "CompleteRegistration", 
+  "Contact", "SubmitApplication", "Subscribe", "Search"
+];
 
 /* ─── Init ───────────────────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {

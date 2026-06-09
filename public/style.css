@@ -276,9 +276,12 @@ input::placeholder { color: var(--text-muted); }
 
 .event-tag {
   padding: 4px 12px; border-radius: 99px; font-size: 12px; font-weight: 600;
-  cursor: pointer; border: 1.5px solid transparent;
+  cursor: pointer; border: 1.5px solid rgba(255,255,255,0.05);
+  background: rgba(255,255,255,0.03); color: #94a3b8;
   transition: all .15s; white-space: nowrap;
 }
+.event-tag:hover { background: rgba(255,255,255,0.08); }
+.event-tag.selected { background: #334155; color: #fff; border-color: #475569; }
 .event-tag.Lead        { background: rgba(31,120,255,.15); color: #60a5fa; border-color: rgba(31,120,255,.3); }
 .event-tag.Schedule    { background: rgba(139,92,246,.15); color: #c084fc; border-color: rgba(139,92,246,.3); }
 .event-tag.ViewContent { background: rgba(240,136,62,.15); color: #fb923c; border-color: rgba(240,136,62,.3); }
