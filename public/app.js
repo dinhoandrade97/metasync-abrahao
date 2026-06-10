@@ -382,27 +382,60 @@ function clearLogs() {
 }
 
 async function loadHistoricalLogs() {
-  const dateVal = document.getElementById("logs-date-select").value;
+  const preset = document.getElementById("logs-preset").value;
+  const customDiv = document.getElementById("logs-custom-date");
   const container = document.getElementById("log-container");
-  
-  if (!dateVal) {
+
+  if (preset === "custom") {
+    customDiv.style.display = "flex";
+  } else {
+    customDiv.style.display = "none";
+  }
+
+  if (preset === "realtime") {
     isViewingHistory = false;
     clearLogs();
     container.innerHTML = `<div class="log-empty">Mostrando apenas logs em tempo real daqui em diante...</div>`;
     return;
   }
-  
+
+  let startDate, endDate;
+  const today = new Date();
+  const formatObj = (d) => d.toISOString().split("T")[0];
+
+  if (preset === "custom") {
+    startDate = document.getElementById("logs-date-start").value;
+    endDate = document.getElementById("logs-date-end").value;
+    if (!startDate || !endDate) return;
+  } else {
+    endDate = formatObj(today);
+    if (preset === "today") {
+      startDate = endDate;
+    } else if (preset === "7") {
+      const start = new Date(today); start.setDate(start.getDate() - 6);
+      startDate = formatObj(start);
+    } else if (preset === "15") {
+      const start = new Date(today); start.setDate(start.getDate() - 14);
+      startDate = formatObj(start);
+    } else if (preset === "30") {
+      const start = new Date(today); start.setDate(start.getDate() - 29);
+      startDate = formatObj(start);
+    } else if (preset === "all") {
+      startDate = "2020-01-01"; // Fetch all
+    }
+  }
+
   isViewingHistory = true;
-  container.innerHTML = `<div class="log-empty">Carregando histórico de ${dateVal.split('-').reverse().join('/')}...</div>`;
+  container.innerHTML = `<div class="log-empty">Carregando histórico do período...</div>`;
   
   try {
-    const res = await fetch(`/api/logs/history?date=${dateVal}`, { headers: getAuthHeaders() });
+    const res = await fetch(`/api/logs/history?start=${startDate}&end=${endDate}`, { headers: getAuthHeaders() });
     if (!res.ok) throw new Error("Erro");
     const logs = await res.json();
     
     container.innerHTML = "";
     if (logs.length === 0) {
-      container.innerHTML = `<div class="log-empty">Nenhum log encontrado para esta data</div>`;
+      container.innerHTML = `<div class="log-empty">Nenhum log encontrado para este período</div>`;
       return;
     }
     

@@ -467,18 +467,33 @@ app.get("/api/logs/stream", authMiddleware, (req, res) => {
 
 // ── Histórico de Logs ─────────────────────────────────────────────────────────
 app.get("/api/logs/history", authMiddleware, (req, res) => {
-  const { date } = req.query; // Formato YYYY-MM-DD
-  if (!date) return res.status(400).json({ error: "date is required" });
+  let { start, end, date } = req.query; // start e end no formato YYYY-MM-DD
+  if (date) { start = date; end = date; } // retrocompatibilidade temporária
   
-  const logFile = path.join(LOGS_DIR, `${date}.jsonl`);
-  if (!fs.existsSync(logFile)) return res.json([]);
+  if (!start || !end) return res.status(400).json({ error: "start and end dates are required" });
   
+  let logs = [];
   try {
-    const content = fs.readFileSync(logFile, "utf-8");
-    const lines = content.split("\n").filter(Boolean);
-    const logs = lines.map(l => JSON.parse(l));
+    if (!fs.existsSync(LOGS_DIR)) return res.json([]);
+    const files = fs.readdirSync(LOGS_DIR);
+    
+    const validFiles = files
+      .filter(f => f.endsWith(".jsonl"))
+      .filter(f => {
+        const fileDate = f.replace(".jsonl", "");
+        return fileDate >= start && fileDate <= end;
+      })
+      .sort(); // Em ordem cronológica
+      
+    for (const file of validFiles) {
+      const content = fs.readFileSync(path.join(LOGS_DIR, file), "utf-8");
+      const lines = content.split("\n").filter(Boolean);
+      logs = logs.concat(lines.map(l => JSON.parse(l)));
+    }
+    
     res.json(logs);
   } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "erro ao ler os logs" });
   }
 });

@@ -208,16 +208,31 @@
 
     <!-- ── PANEL: LOGS ── -->
     <div id="panel-logs" class="panel">
-      <div class="panel-header">
+      <div class="panel-header" style="flex-wrap: wrap; gap: 15px;">
         <div>
           <h1 class="panel-title">Logs do Sistema</h1>
           <p class="panel-sub">Histórico salvo e acompanhamento em tempo real</p>
         </div>
-        <div style="display: flex; gap: 10px; align-items: center;">
-          <input type="date" id="logs-date-select" class="select-filter" onchange="loadHistoricalLogs()" style="color: var(--text-muted);" title="Selecione uma data para ver o histórico" />
-          <select id="logs-client-select" onchange="filterLogs()" class="select-filter" style="font-weight: 600; color: var(--blue);">
+        <div class="analytics-filters">
+          <select id="logs-client-select" onchange="filterLogs()" class="select-filter" style="font-weight: 600; color: var(--blue); margin-right: 15px;">
             <option value="">Todos os clientes</option>
           </select>
+          <select id="logs-preset" class="select-filter" onchange="loadHistoricalLogs()">
+            <option value="realtime" selected>Tempo Real</option>
+            <option value="today">Hoje</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="15">Últimos 15 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="all">Todo o Período</option>
+            <option value="custom">Customizado...</option>
+          </select>
+          
+          <div id="logs-custom-date" class="date-range" style="display:none;">
+            <input type="date" id="logs-date-start" class="date-input" onchange="loadHistoricalLogs()" />
+            <span style="color:var(--text-muted)">até</span>
+            <input type="date" id="logs-date-end" class="date-input" onchange="loadHistoricalLogs()" />
+          </div>
+
           <button class="btn-secondary" onclick="clearLogs()">Limpar</button>
         </div>
       </div>
