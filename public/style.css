@@ -286,11 +286,25 @@ input::placeholder { color: var(--text-muted); }
 .event-tag.Schedule    { background: rgba(139,92,246,.15); color: #c084fc; border-color: rgba(139,92,246,.3); }
 .event-tag.ViewContent { background: rgba(240,136,62,.15); color: #fb923c; border-color: rgba(240,136,62,.3); }
 .event-tag.Purchase    { background: rgba(63,185,80,.15);  color: #4ade80; border-color: rgba(63,185,80,.3); }
+.event-tag.InitiateCheckout     { background: rgba(234,179,8,.15);   color: #facc15; border-color: rgba(234,179,8,.3); }
+.event-tag.AddPaymentInfo       { background: rgba(20,184,166,.15);  color: #2dd4bf; border-color: rgba(20,184,166,.3); }
+.event-tag.CompleteRegistration { background: rgba(236,72,153,.15);  color: #f472b6; border-color: rgba(236,72,153,.3); }
+.event-tag.Contact              { background: rgba(6,182,212,.15);   color: #22d3ee; border-color: rgba(6,182,212,.3); }
+.event-tag.SubmitApplication    { background: rgba(99,102,241,.15);  color: #818cf8; border-color: rgba(99,102,241,.3); }
+.event-tag.Subscribe            { background: rgba(225,29,72,.15);   color: #fb7185; border-color: rgba(225,29,72,.3); }
+.event-tag.Search               { background: rgba(148,163,184,.15); color: #cbd5e1; border-color: rgba(148,163,184,.3); }
 
 .event-tag.selected.Lead        { background: #1f78ff; color: #fff; border-color: #1f78ff; }
 .event-tag.selected.Schedule    { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
 .event-tag.selected.ViewContent { background: #f0883e; color: #fff; border-color: #f0883e; }
 .event-tag.selected.Purchase    { background: #3fb950; color: #fff; border-color: #3fb950; }
+.event-tag.selected.InitiateCheckout     { background: #eab308; color: #fff; border-color: #eab308; }
+.event-tag.selected.AddPaymentInfo       { background: #14b8a6; color: #fff; border-color: #14b8a6; }
+.event-tag.selected.CompleteRegistration { background: #ec4899; color: #fff; border-color: #ec4899; }
+.event-tag.selected.Contact              { background: #06b6d4; color: #fff; border-color: #06b6d4; }
+.event-tag.selected.SubmitApplication    { background: #6366f1; color: #fff; border-color: #6366f1; }
+.event-tag.selected.Subscribe            { background: #e11d48; color: #fff; border-color: #e11d48; }
+.event-tag.selected.Search               { background: #94a3b8; color: #fff; border-color: #94a3b8; }
 
 .purchase-value-opt {
   display: none; align-items: center; gap: 5px;

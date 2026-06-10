@@ -4,6 +4,7 @@ let activeInboxId = null;
 let logCount   = 0;
 let logPanel   = false;
 let authToken  = localStorage.getItem("metasync_token") || "";
+let isViewingHistory = false;
 
 function getAuthHeaders() {
   return {
@@ -374,7 +375,47 @@ function filterLogs() {
   });
 }
 
-function appendLog(data) {
+function clearLogs() {
+  document.getElementById("log-container").innerHTML = `<div class="log-empty">Mostrando apenas logs daqui em diante...</div>`;
+  logCount = 0;
+  document.getElementById("log-badge").style.display = "none";
+}
+
+async function loadHistoricalLogs() {
+  const dateVal = document.getElementById("logs-date-select").value;
+  const container = document.getElementById("log-container");
+  
+  if (!dateVal) {
+    isViewingHistory = false;
+    clearLogs();
+    container.innerHTML = `<div class="log-empty">Mostrando apenas logs em tempo real daqui em diante...</div>`;
+    return;
+  }
+  
+  isViewingHistory = true;
+  container.innerHTML = `<div class="log-empty">Carregando histórico de ${dateVal.split('-').reverse().join('/')}...</div>`;
+  
+  try {
+    const res = await fetch(`/api/logs/history?date=${dateVal}`, { headers: getAuthHeaders() });
+    if (!res.ok) throw new Error("Erro");
+    const logs = await res.json();
+    
+    container.innerHTML = "";
+    if (logs.length === 0) {
+      container.innerHTML = `<div class="log-empty">Nenhum log encontrado para esta data</div>`;
+      return;
+    }
+    
+    logs.forEach(l => appendLog(l, true));
+    filterLogs(); // Aplica o filtro de cliente que já estiver selecionado
+  } catch (e) {
+    container.innerHTML = `<div class="log-empty" style="color:var(--red)">Erro ao carregar histórico</div>`;
+  }
+}
+
+function appendLog(data, isHistorical = false) {
+  if (isViewingHistory && !isHistorical) return; // Se está vendo o histórico, ignora novos logs em tempo real
+
   const container = document.getElementById("log-container");
   const empty = container.querySelector(".log-empty");
   if (empty) empty.remove();
@@ -413,12 +454,6 @@ function appendLog(data) {
     badge.style.display = "inline-flex";
     badge.textContent = logCount;
   }
-}
-
-function clearLogs() {
-  document.getElementById("log-container").innerHTML = '<div class="log-empty">Aguardando eventos...</div>';
-  logCount = 0;
-  document.getElementById("log-badge").style.display = "none";
 }
 
 /* ─── Toast ──────────────────────────────────────────────────────────────────── */

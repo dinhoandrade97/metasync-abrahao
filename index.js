@@ -11,6 +11,7 @@ const PORT           = process.env.PORT || 4000;
 const DATA_FILE      = path.join(__dirname, "data", "clients.json");
 const QUEUE_FILE     = path.join(__dirname, "data", "queue.json");
 const ANALYTICS_FILE = path.join(__dirname, "data", "analytics.json");
+const LOGS_DIR       = path.join(__dirname, "data", "logs");
 const META_CAPI_BASE = "https://graph.facebook.com/v19.0";
 
 // ─── SSE clients for real-time logs ───────────────────────────────────────────
@@ -31,6 +32,15 @@ function log(level, inboxId, message, extra = {}) {
   };
   console.log(`[${level.toUpperCase()}]`, message, extra.error || "");
   broadcast(entry);
+
+  try {
+    if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
+    const dateStr = entry.ts.split("T")[0];
+    fs.appendFileSync(path.join(LOGS_DIR, `${dateStr}.jsonl`), JSON.stringify(entry) + "\n");
+  } catch (e) {
+    console.error("Erro ao salvar log no disco:", e);
+  }
+
   return entry;
 }
 
@@ -453,6 +463,24 @@ app.get("/api/logs/stream", authMiddleware, (req, res) => {
   res.write(`data: ${JSON.stringify({ ts: new Date().toISOString(), level: "info", inboxId: "system", message: "Conectado ao stream de logs ✅" })}\n\n`);
   sseClients.add(res);
   req.on("close", () => sseClients.delete(res));
+});
+
+// ── Histórico de Logs ─────────────────────────────────────────────────────────
+app.get("/api/logs/history", authMiddleware, (req, res) => {
+  const { date } = req.query; // Formato YYYY-MM-DD
+  if (!date) return res.status(400).json({ error: "date is required" });
+  
+  const logFile = path.join(LOGS_DIR, `${date}.jsonl`);
+  if (!fs.existsSync(logFile)) return res.json([]);
+  
+  try {
+    const content = fs.readFileSync(logFile, "utf-8");
+    const lines = content.split("\n").filter(Boolean);
+    const logs = lines.map(l => JSON.parse(l));
+    res.json(logs);
+  } catch (e) {
+    res.status(500).json({ error: "erro ao ler os logs" });
+  }
 });
 
 // ── CRUD Clients ──────────────────────────────────────────────────────────────
