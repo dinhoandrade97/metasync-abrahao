@@ -401,7 +401,9 @@ async function loadHistoricalLogs() {
 
   let startDate, endDate;
   const today = new Date();
-  const formatObj = (d) => d.toISOString().split("T")[0];
+  const formatObj = (d) => {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  };
 
   if (preset === "custom") {
     startDate = document.getElementById("logs-date-start").value;
@@ -411,6 +413,10 @@ async function loadHistoricalLogs() {
     endDate = formatObj(today);
     if (preset === "today") {
       startDate = endDate;
+    } else if (preset === "yesterday") {
+      const start = new Date(today); start.setDate(start.getDate() - 1);
+      startDate = formatObj(start);
+      endDate = startDate;
     } else if (preset === "7") {
       const start = new Date(today); start.setDate(start.getDate() - 6);
       startDate = formatObj(start);
@@ -583,12 +589,19 @@ async function loadAnalytics() {
           toast("Selecione as datas de início e fim", "warn");
           return;
        }
+    } else if (preset === "yesterday") {
+       const d = new Date();
+       d.setDate(d.getDate() - 1);
+       const dateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+       daysToLoad.push(dateStr);
+       subtitle.textContent = "Performance de ontem";
     } else {
        const numDays = parseInt(preset);
        for (let i = numDays - 1; i >= 0; i--) {
          const d = new Date();
          d.setDate(d.getDate() - i);
-         daysToLoad.push(d.toISOString().split("T")[0]);
+         const dateStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+         daysToLoad.push(dateStr);
        }
        if (preset === "1") {
          subtitle.textContent = "Performance de hoje";

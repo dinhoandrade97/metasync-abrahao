@@ -22,6 +22,10 @@ function broadcast(data) {
   sseClients.forEach(res => res.write(msg));
 }
 
+function getBrtDateStr() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
 function log(level, inboxId, message, extra = {}) {
   const entry = {
     ts: new Date().toISOString(),
@@ -35,7 +39,7 @@ function log(level, inboxId, message, extra = {}) {
 
   try {
     if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
-    const dateStr = entry.ts.split("T")[0];
+    const dateStr = getBrtDateStr();
     fs.appendFileSync(path.join(LOGS_DIR, `${dateStr}.jsonl`), JSON.stringify(entry) + "\n");
   } catch (e) {
     console.error("Erro ao salvar log no disco:", e);
@@ -60,7 +64,7 @@ function saveClients(clients) { saveJSON(DATA_FILE, clients); }
 // ─── Analytics ────────────────────────────────────────────────────────────────
 function trackAnalytics(inboxId, success, value = 0, eventName = "Unknown") {
   const analytics = loadJSON(ANALYTICS_FILE, {});
-  const dateStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+  const dateStr = getBrtDateStr();
   
   if (!analytics[inboxId]) analytics[inboxId] = {};
   if (!analytics[inboxId][dateStr]) analytics[inboxId][dateStr] = { success: 0, fail: 0, value: 0, events: {} };
