@@ -19,6 +19,11 @@ function showLogin() {
   document.getElementById("login-overlay").classList.add("show");
 }
 
+function handleLogout() {
+  localStorage.removeItem("metasync_token");
+  window.location.reload();
+}
+
 function toggleLoginPass() {
   const el = document.getElementById("login-pass");
   el.type = el.type === "password" ? "text" : "password";
@@ -107,9 +112,11 @@ async function loadClients() {
 
 function renderClientList() {
   const el = document.getElementById("client-list");
+  const selectEl = document.getElementById("calendar-client-select");
   const keys = Object.keys(clients);
   if (keys.length === 0) {
     el.innerHTML = '<div class="client-list-empty">Nenhum cliente ainda</div>';
+    if(selectEl) selectEl.innerHTML = '<option value="">Nenhum cliente disponível</option>';
     return;
   }
   el.innerHTML = keys.map(id => `
@@ -118,6 +125,11 @@ function renderClientList() {
       ${clients[id].name || `Inbox ${id}`}
     </button>
   `).join("");
+  
+  if (selectEl) {
+    selectEl.innerHTML = '<option value="">Selecione um cliente...</option>' + 
+      keys.map(id => `<option value="${id}" ${id === activeInboxId ? "selected" : ""}>${clients[id].name || `Inbox ${id}`}</option>`).join("");
+  }
 
   const select = document.getElementById("analytics-client-select");
   if (select) {
@@ -151,6 +163,10 @@ async function selectClient(inboxId) {
   activeInboxId = inboxId;
   showPanel("clients");
   renderClientList();
+  
+  // Atualiza o select da aba Agenda para refletir a mesma seleção
+  const selectEl = document.getElementById("calendar-client-select");
+  if (selectEl) selectEl.value = inboxId;
 
   // Re-fetch to get full token
   try {
@@ -714,6 +730,13 @@ function renderChart(labels, successes, fails, dailyEvents = []) {
 
 /* ─── Google Calendar ───────────────────────────────────────────────────────── */
 let calendarInstance = null;
+
+function handleCalendarClientSelect(inboxId) {
+  if (!inboxId) return;
+  activeInboxId = inboxId;
+  renderClientList(); // Atualiza a barra lateral para marcar o cliente correto
+  loadCalendarEvents(); // Carrega o calendário
+}
 
 async function loadCalendarEvents() {
   const container = document.getElementById("calendar-container");

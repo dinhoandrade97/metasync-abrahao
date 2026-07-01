@@ -110,9 +110,15 @@
       Novo Cliente
     </button>
 
-    <div class="sidebar-footer">
-      <div class="status-dot online"></div>
-      <span>Servidor online</span>
+    <div class="sidebar-footer" style="display: flex; justify-content: space-between; align-items: center;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <div class="status-dot online"></div>
+        <span>Servidor online</span>
+      </div>
+      <button onclick="handleLogout()" style="background: transparent; border: none; color: #ef4444; cursor: pointer; display: flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 500;" title="Sair">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        Sair
+      </button>
     </div>
   </aside>
 
@@ -283,7 +289,10 @@
           <h1 class="panel-title">Agenda do Cliente</h1>
           <p class="panel-sub">Gerencie compromissos e visitas integrados ao Google Calendar</p>
         </div>
-        <div class="header-actions">
+        <div class="header-actions" style="display: flex; gap: 10px; align-items: center;">
+          <select id="calendar-client-select" class="form-input" style="width: auto; min-width: 200px; padding: 8px 12px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 14px;" onchange="handleCalendarClientSelect(this.value)">
+            <option value="">Selecione um cliente...</option>
+          </select>
           <button class="btn-primary" onclick="openCalendarEventModal()">
             <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
             Novo Evento
@@ -397,42 +406,43 @@
   </div>
 
   <!-- ── MODAL: EVENTO CALENDAR ── -->
-  <div class="modal-overlay" id="calendar-modal">
-    <div class="modal-content" style="max-width: 400px;">
-      <div class="modal-header">
-        <h2 class="modal-title" id="calendar-modal-title">Novo Evento</h2>
-        <button class="modal-close" onclick="closeCalendarEventModal()">
+  <div class="modal-overlay" id="calendar-modal" style="backdrop-filter: blur(8px); background: rgba(15, 23, 42, 0.7);">
+    <div class="modal-content" style="max-width: 480px; background: linear-gradient(145deg, #1e293b, #0f172a); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); padding: 30px;">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px; margin-bottom: 25px;">
+        <h2 class="modal-title" id="calendar-modal-title" style="font-size: 20px; color: #f8fafc; font-weight: 600;">Novo Evento</h2>
+        <button class="modal-close" onclick="closeCalendarEventModal()" style="background: rgba(255,255,255,0.05); border-radius: 50%; padding: 6px;">
           <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 15px;">
         <input type="hidden" id="f-cal-event-id" />
         <div class="form-group">
-          <label>Título do Evento</label>
-          <input type="text" id="f-cal-title" placeholder="Ex: Reunião de Alinhamento" required />
+          <label style="font-size: 13px; color: #94a3b8; font-weight: 500;">Título do Evento</label>
+          <input type="text" id="f-cal-title" placeholder="Ex: Reunião de Alinhamento" required style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); padding: 12px; border-radius: 10px;" />
         </div>
-        <div class="form-row">
+        <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
           <div class="form-group">
-            <label>Início</label>
-            <input type="datetime-local" id="f-cal-start" required />
+            <label style="font-size: 13px; color: #94a3b8; font-weight: 500;">Início</label>
+            <input type="datetime-local" id="f-cal-start" required style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); padding: 12px; border-radius: 10px;" />
           </div>
           <div class="form-group">
-            <label>Término</label>
-            <input type="datetime-local" id="f-cal-end" required />
+            <label style="font-size: 13px; color: #94a3b8; font-weight: 500;">Término</label>
+            <input type="datetime-local" id="f-cal-end" required style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); padding: 12px; border-radius: 10px;" />
           </div>
         </div>
         <div class="form-group">
-          <label>Local (Opcional)</label>
-          <input type="text" id="f-cal-location" placeholder="Link do Meet ou Endereço" />
+          <label style="font-size: 13px; color: #94a3b8; font-weight: 500;">Local (Opcional)</label>
+          <input type="text" id="f-cal-location" placeholder="Link do Meet ou Endereço físico" style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); padding: 12px; border-radius: 10px;" />
         </div>
         <div class="form-group">
-          <label>Descrição (Opcional)</label>
-          <textarea id="f-cal-desc" rows="3" placeholder="Pauta da reunião..."></textarea>
+          <label style="font-size: 13px; color: #94a3b8; font-weight: 500;">Descrição (Opcional)</label>
+          <textarea id="f-cal-desc" rows="3" placeholder="Pauta da reunião, detalhes adicionais..." style="background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); padding: 12px; border-radius: 10px; resize: vertical;"></textarea>
         </div>
       </div>
-      <div class="modal-footer" style="justify-content: space-between;">
-        <button class="btn-danger" id="btn-delete-cal" onclick="deleteCalendarEvent()" style="display:none">Excluir</button>
-        <button class="btn-primary" onclick="saveCalendarEvent()">Salvar Evento</button>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; margin-top: 25px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.05);">
+        <button class="btn-danger" id="btn-delete-cal" onclick="deleteCalendarEvent()" style="display:none; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 10px 20px; border-radius: 10px;">Excluir</button>
+        <div style="flex-grow: 1;"></div>
+        <button class="btn-primary" onclick="saveCalendarEvent()" style="padding: 10px 24px; border-radius: 10px; font-weight: 500; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);">Salvar Evento</button>
       </div>
     </div>
   </div>
@@ -440,6 +450,6 @@
   <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
