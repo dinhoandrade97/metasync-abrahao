@@ -716,8 +716,13 @@ function renderChart(labels, successes, fails, dailyEvents = []) {
 let calendarInstance = null;
 
 async function loadCalendarEvents() {
-  if (!activeInboxId) return;
   const container = document.getElementById("calendar-container");
+
+  if (!activeInboxId) {
+    if (calendarInstance) { calendarInstance.destroy(); calendarInstance = null; }
+    container.innerHTML = '<div class="log-empty" style="text-align:center; padding: 40px; color: var(--text-muted);">Selecione um cliente no menu lateral esquerdo para carregar a agenda.</div>';
+    return;
+  }
   
   if (!calendarInstance) {
     container.innerHTML = '<div class="log-empty">Carregando eventos...</div>';
@@ -775,6 +780,12 @@ async function loadCalendarEvents() {
     });
     
     calendarInstance.render();
+    
+    // Forçar atualização de tamanho logo após o render (evita bug de calendário não aparecer)
+    setTimeout(() => {
+      if (calendarInstance) calendarInstance.updateSize();
+    }, 150);
+
   } catch (err) {
     console.error("Calendar Load error", err);
     container.innerHTML = '<div class="log-empty" style="text-align:center; padding: 40px; color: var(--danger);">Erro ao carregar agenda.</div>';
