@@ -19,12 +19,20 @@ function showLogin() {
   document.getElementById("login-overlay").classList.add("show");
 }
 
+function toggleLoginPass() {
+  const el = document.getElementById("login-pass");
+  el.type = el.type === "password" ? "text" : "password";
+}
+
 async function handleLogin(e) {
   e.preventDefault();
   const user = document.getElementById("login-user").value.trim();
   const pass = document.getElementById("login-pass").value.trim();
   const btn = document.getElementById("btn-login");
+  const errMsg = document.getElementById("login-error-msg");
+  
   btn.textContent = "Aguarde...";
+  errMsg.style.display = "none";
   
   try {
     const res = await fetch("/api/login", {
@@ -40,9 +48,13 @@ async function handleLogin(e) {
       loadClients();
       connectSSE();
     } else {
+      errMsg.textContent = "Usuário ou senha incorretos";
+      errMsg.style.display = "block";
       toast("Usuário ou senha incorretos", "err");
     }
   } catch (err) {
+    errMsg.textContent = "Erro ao conectar no servidor";
+    errMsg.style.display = "block";
     toast("Erro ao conectar no servidor", "err");
   }
   btn.textContent = "Entrar";

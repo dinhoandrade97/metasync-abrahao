@@ -26,8 +26,14 @@
         </div>
         <div class="form-group">
           <label>Senha</label>
-          <input type="password" id="login-pass" required placeholder="Digite sua senha" />
+          <div class="input-eye">
+            <input type="password" id="login-pass" required placeholder="Digite sua senha" />
+            <button type="button" onclick="toggleLoginPass()" class="eye-btn" title="Mostrar/ocultar">
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            </button>
+          </div>
         </div>
+        <div id="login-error-msg" style="color: #ef4444; font-size: 13px; text-align: center; margin-top: 10px; display: none;"></div>
         <button type="submit" class="btn-primary" id="btn-login" style="width:100%; justify-content:center; margin-top:10px;">
           Entrar
         </button>
