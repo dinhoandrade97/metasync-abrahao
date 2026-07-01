@@ -64,9 +64,21 @@ function saveClients(clients) { saveJSON(DATA_FILE, clients); }
 
 // ─── Google Calendar Auth ─────────────────────────────────────────────────────
 function getCalendarAuth() {
+  if (process.env.GOOGLE_CREDENTIALS_JSON) {
+    try {
+      const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+      return new google.auth.GoogleAuth({
+        credentials,
+        scopes: ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/calendar.readonly'],
+      });
+    } catch (e) {
+      console.error("Erro ao fazer parse da variável GOOGLE_CREDENTIALS_JSON:", e);
+    }
+  }
+
   const credsPath = path.join(__dirname, "data", "google-credentials.json");
   if (!fs.existsSync(credsPath)) {
-    throw new Error("Arquivo de credenciais do Google Workspace (data/google-credentials.json) não encontrado.");
+    throw new Error("Arquivo de credenciais do Google Workspace (data/google-credentials.json) não encontrado, e variável GOOGLE_CREDENTIALS_JSON não definida.");
   }
   return new google.auth.GoogleAuth({
     keyFile: credsPath,
