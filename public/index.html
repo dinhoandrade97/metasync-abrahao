@@ -7,7 +7,30 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales/pt-br.global.min.js"></script>
   <link rel="stylesheet" href="style.css?v=3" />
+  <style>
+    /* FullCalendar Dark Theme Adjustments */
+    .fc-theme-standard td, .fc-theme-standard th { border-color: #334155; }
+    .fc-theme-standard .fc-scrollgrid { border-color: #334155; }
+    .fc-day-today { background: rgba(59, 130, 246, 0.1) !important; }
+    .fc .fc-toolbar-title { font-size: 1.2em; color: #f8fafc; font-weight: 600; }
+    .fc .fc-button-primary { background-color: #3b82f6; border-color: #3b82f6; }
+    .fc .fc-button-primary:hover { background-color: #2563eb; border-color: #2563eb; }
+    .fc .fc-button-primary:disabled { background-color: #1e293b; border-color: #1e293b; color: #94a3b8; }
+    .fc .fc-event { cursor: pointer; border-radius: 4px; border: none; padding: 2px 4px; font-size: 0.85em; }
+    .fc-event-main { color: #fff; }
+    .fc-daygrid-day-number { color: #f8fafc; text-decoration: none; }
+    .fc-col-header-cell-cushion { color: #94a3b8; text-decoration: none; }
+    #calendar-container {
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      min-height: 600px;
+    }
+  </style>
 </head>
 <body>
   <!-- ── LOGIN OVERLAY ── -->
@@ -268,9 +291,7 @@
           <button class="btn-secondary" onclick="loadCalendarEvents()">Atualizar</button>
         </div>
       </div>
-      <div class="calendar-container" id="calendar-container">
-        <div class="log-empty">Carregando eventos...</div>
-      </div>
+      <div id="calendar-container"></div>
     </div>
 
   </main>
@@ -419,6 +440,6 @@
   <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

@@ -713,56 +713,72 @@ function renderChart(labels, successes, fails, dailyEvents = []) {
 }
 
 /* ─── Google Calendar ───────────────────────────────────────────────────────── */
+let calendarInstance = null;
+
 async function loadCalendarEvents() {
   if (!activeInboxId) return;
   const container = document.getElementById("calendar-container");
-  container.innerHTML = '<div class="log-empty">Carregando eventos...</div>';
+  
+  if (!calendarInstance) {
+    container.innerHTML = '<div class="log-empty">Carregando eventos...</div>';
+  }
 
   try {
     const res = await fetch(`/api/calendar/${activeInboxId}/events`, { headers: getAuthHeaders() });
     if (!res.ok) {
       if (res.status === 400) {
-        container.innerHTML = '<div class="log-empty">Este cliente não possui um Google Calendar ID configurado.</div>';
+        container.innerHTML = '<div class="log-empty" style="text-align:center; padding: 40px; color: var(--text-muted);">Este cliente não possui um Google Calendar ID configurado.</div>';
       } else {
-        container.innerHTML = '<div class="log-empty">Erro ao carregar eventos da agenda.</div>';
+        container.innerHTML = '<div class="log-empty" style="text-align:center; padding: 40px; color: var(--danger);">Erro ao carregar eventos da agenda.</div>';
       }
+      if (calendarInstance) { calendarInstance.destroy(); calendarInstance = null; }
       return;
     }
     const events = await res.json();
-    if (!events || events.length === 0) {
-      container.innerHTML = '<div class="log-empty">Nenhum evento futuro encontrado.</div>';
-      return;
+    
+    const mappedEvents = events.map(ev => ({
+      id: ev.id,
+      title: ev.summary || 'Sem título',
+      start: ev.start.dateTime || ev.start.date,
+      end: ev.end.dateTime || ev.end.date,
+      extendedProps: { originalEvent: ev }
+    }));
+
+    if (calendarInstance) {
+      calendarInstance.destroy();
     }
-
     container.innerHTML = "";
-    events.forEach(ev => {
-      const start = ev.start.dateTime || ev.start.date;
-      const end = ev.end.dateTime || ev.end.date;
-      
-      const item = document.createElement("div");
-      item.className = "stat-card"; // Reusing styles for now, or making a specific class
-      item.style.cursor = "pointer";
-      item.style.marginBottom = "10px";
-      item.style.display = "flex";
-      item.style.justifyContent = "space-between";
-      item.style.alignItems = "center";
-      item.onclick = () => openCalendarEventModal(ev);
-
-      item.innerHTML = `
-        <div>
-          <div style="font-weight: 600; font-size: 14px; color: var(--text-color);">${ev.summary || "Sem título"}</div>
-          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${new Date(start).toLocaleString()} - ${new Date(end).toLocaleString()}</div>
-          ${ev.location ? `<div style="font-size: 11px; color: var(--blue); margin-top: 4px;">📍 ${ev.location}</div>` : ''}
-        </div>
-        <div style="color: var(--text-muted);">
-          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-        </div>
-      `;
-      container.appendChild(item);
+    
+    calendarInstance = new FullCalendar.Calendar(container, {
+      initialView: 'dayGridMonth',
+      locale: 'pt-br',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+      },
+      buttonText: {
+        today: 'Hoje',
+        month: 'Mês',
+        week: 'Semana',
+        day: 'Dia'
+      },
+      events: mappedEvents,
+      eventClick: function(info) {
+        openCalendarEventModal(info.event.extendedProps.originalEvent);
+      },
+      dateClick: function(info) {
+        openCalendarEventModal();
+        document.getElementById("f-cal-start").value = info.dateStr + 'T09:00';
+        document.getElementById("f-cal-end").value = info.dateStr + 'T10:00';
+      }
     });
+    
+    calendarInstance.render();
   } catch (err) {
     console.error("Calendar Load error", err);
-    container.innerHTML = '<div class="log-empty">Erro ao carregar agenda.</div>';
+    container.innerHTML = '<div class="log-empty" style="text-align:center; padding: 40px; color: var(--danger);">Erro ao carregar agenda.</div>';
+    if (calendarInstance) { calendarInstance.destroy(); calendarInstance = null; }
   }
 }
 
