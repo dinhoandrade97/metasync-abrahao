@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agenda</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+      --primary: #3b82f6;
+      --danger: #ef4444;
+    }
+    body {
+      margin: 0; padding: 12px; font-family: 'Inter', sans-serif;
+      background: var(--bg); color: var(--text);
+      font-size: 13px;
+    }
+    * { box-sizing: border-box; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    h2 { margin: 0; font-size: 15px; font-weight: 600; }
+    .btn { background: var(--primary); color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
+    .btn:hover { opacity: 0.9; }
+    .btn-danger { background: var(--danger); }
+    .event-card {
+      background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px; margin-bottom: 8px; cursor: pointer;
+    }
+    .event-card:hover { border-color: var(--primary); }
+    .event-title { font-weight: 600; margin-bottom: 4px; }
+    .event-time { font-size: 11px; color: var(--text-muted); }
+    
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; font-size: 11px; margin-bottom: 4px; color: var(--text-muted); }
+    input, textarea {
+      width: 100%; padding: 6px 8px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      font-family: inherit; font-size: 12px;
+    }
+    .hidden { display: none !important; }
+    .flex { display: flex; gap: 8px; }
+  </style>
+</head>
+<body>
+
+  <div id="view-list">
+    <div class="header">
+      <h2>Próximos Eventos</h2>
+      <button class="btn" onclick="showForm()">+ Novo</button>
+    </div>
+    <div id="events-container">
+      <div style="color:var(--text-muted); text-align:center; padding: 20px;">Aguardando Chatwoot...</div>
+    </div>
+  </div>
+
+  <div id="view-form" class="hidden">
+    <div class="header">
+      <h2 id="form-title">Novo Evento</h2>
+      <button class="btn" style="background:transparent; border:1px solid var(--border)" onclick="showList()">Voltar</button>
+    </div>
+    <input type="hidden" id="f-id">
+    <div class="form-group">
+      <label>Título</label>
+      <input type="text" id="f-title" required>
+    </div>
+    <div class="flex">
+      <div class="form-group" style="flex:1">
+        <label>Início</label>
+        <input type="datetime-local" id="f-start" required>
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>Término</label>
+        <input type="datetime-local" id="f-end" required>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Local / Link</label>
+      <input type="text" id="f-location">
+    </div>
+    <div class="flex" style="margin-top: 15px;">
+      <button class="btn btn-danger hidden" id="btn-delete" onclick="deleteEvent()" style="flex:1">Excluir</button>
+      <button class="btn" onclick="saveEvent()" style="flex:2">Salvar</button>
+    </div>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    let inboxId = null;
+
+    if (!token) {
+      document.getElementById("events-container").innerHTML = '<div style="color:var(--danger)">Token ausente na URL. Configure o Dashboard App no Chatwoot com ?token=SuaSenha.</div>';
+    }
+
+    // Escutar mensagem do Chatwoot
+    window.addEventListener("message", function (event) {
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (data.event === "appContext" && data.data) {
+          if (data.data.conversation && data.data.conversation.inbox_id) {
+            inboxId = data.data.conversation.inbox_id;
+            loadEvents();
+          }
+        }
+      } catch (e) {}
+    });
+
+    // Pede o contexto para o Chatwoot
+    window.parent.postMessage('chatwoot-dashboard-app:fetch-info', '*');
+
+    function getHeaders() {
+      return { "Content-Type": "application/json", "Authorization": "Bearer " + token };
+    }
+
+    async function loadEvents() {
+      if (!inboxId || !token) return;
+      const container = document.getElementById("events-container");
+      container.innerHTML = '<div style="color:var(--text-muted); text-align:center;">Carregando...</div>';
+      
+      try {
+        const res = await fetch(`/api/calendar/${inboxId}/events`, { headers: getHeaders() });
+        if (!res.ok) throw new Error();
+        const events = await res.json();
+        
+        if (events.length === 0) {
+          container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding: 20px;">Nenhum evento agendado.</div>';
+          return;
+        }
+
+        container.innerHTML = "";
+        events.forEach(ev => {
+          const start = ev.start.dateTime || ev.start.date;
+          
+          const card = document.createElement("div");
+          card.className = "event-card";
+          card.onclick = () => editEvent(ev);
+          card.innerHTML = `
+            <div class="event-title">${ev.summary || "Sem Título"}</div>
+            <div class="event-time">${new Date(start).toLocaleString()}</div>
+            ${ev.location ? \`<div class="event-time" style="color:var(--primary); margin-top:2px;">📍 ${ev.location}</div>\` : ''}
+          `;
+          container.appendChild(card);
+        });
+      } catch (e) {
+        container.innerHTML = '<div style="color:var(--danger); text-align:center;">Erro ao carregar.</div>';
+      }
+    }
+
+    function showList() {
+      document.getElementById("view-form").classList.add("hidden");
+      document.getElementById("view-list").classList.remove("hidden");
+    }
+
+    function showForm() {
+      document.getElementById("view-list").classList.add("hidden");
+      document.getElementById("view-form").classList.remove("hidden");
+      document.getElementById("f-id").value = "";
+      document.getElementById("f-title").value = "";
+      document.getElementById("f-start").value = "";
+      document.getElementById("f-end").value = "";
+      document.getElementById("f-location").value = "";
+      document.getElementById("btn-delete").classList.add("hidden");
+    }
+
+    function editEvent(ev) {
+      showForm();
+      document.getElementById("form-title").textContent = "Editar Evento";
+      document.getElementById("f-id").value = ev.id;
+      document.getElementById("f-title").value = ev.summary || "";
+      document.getElementById("f-location").value = ev.location || "";
+      if (ev.start.dateTime) document.getElementById("f-start").value = ev.start.dateTime.slice(0, 16);
+      if (ev.end.dateTime) document.getElementById("f-end").value = ev.end.dateTime.slice(0, 16);
+      document.getElementById("btn-delete").classList.remove("hidden");
+    }
+
+    async function saveEvent() {
+      const id = document.getElementById("f-id").value;
+      const summary = document.getElementById("f-title").value.trim();
+      const start = document.getElementById("f-start").value;
+      const end = document.getElementById("f-end").value;
+      const location = document.getElementById("f-location").value.trim();
+
+      if (!summary || !start || !end) return alert("Preencha título e datas");
+
+      const payload = { summary, location, start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+
+      try {
+        const res = await fetch(`/api/calendar/${inboxId}/events${id ? \`/\${id}\` : ''}`, {
+          method: id ? "PATCH" : "POST",
+          headers: getHeaders(),
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error();
+        showList();
+        loadEvents();
+      } catch (e) {
+        alert("Erro ao salvar");
+      }
+    }
+
+    async function deleteEvent() {
+      if (!confirm("Tem certeza?")) return;
+      const id = document.getElementById("f-id").value;
+      try {
+        const res = await fetch(`/api/calendar/${inboxId}/events/${id}`, {
+          method: "DELETE", headers: getHeaders()
+        });
+        if (!res.ok) throw new Error();
+        showList();
+        loadEvents();
+      } catch (e) {
+        alert("Erro ao excluir");
+      }
+    }
+  </script>
+</body>
+</html>

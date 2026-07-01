@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
+    "googleapis": "^173.0.0",
     "node-fetch": "^2.7.0"
   },
   "engines": {

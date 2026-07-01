@@ -5,6 +5,7 @@ const crypto   = require("crypto");
 const fs       = require("fs");
 const path     = require("path");
 const fetch    = require("node-fetch");
+const { google } = require("googleapis");
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 const PORT           = process.env.PORT || 4000;
@@ -60,6 +61,18 @@ function saveJSON(file, data) {
 
 function loadClients() { return loadJSON(DATA_FILE, {}); }
 function saveClients(clients) { saveJSON(DATA_FILE, clients); }
+
+// ─── Google Calendar Auth ─────────────────────────────────────────────────────
+function getCalendarAuth() {
+  const credsPath = path.join(__dirname, "data", "google-credentials.json");
+  if (!fs.existsSync(credsPath)) {
+    throw new Error("Arquivo de credenciais do Google Workspace (data/google-credentials.json) não encontrado.");
+  }
+  return new google.auth.GoogleAuth({
+    keyFile: credsPath,
+    scopes: ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/calendar.readonly'],
+  });
+}
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
 function trackAnalytics(inboxId, success, value = 0, eventName = "Unknown") {
@@ -418,9 +431,13 @@ async function processWebhook(payload, client, inboxId) {
 const app = express();
 
 app.use(express.json({
-  verify: (req, _res, buf) => { req.rawBody = buf; },
+  verify: (req, _res, buf) => { req.rawBody = buf.toString(); },
 }));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static("public"));
+
+app.get("/calendar-widget", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "calendar-widget.html"));
+});
 
 // ── Health ────────────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => {
@@ -523,7 +540,7 @@ app.get("/api/clients/full/:inboxId", authMiddleware, (req, res) => {
 });
 
 app.post("/api/clients", authMiddleware, (req, res) => {
-  const { inboxId, name, pixelId, accessToken, webhookSecret, stageMap, tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret } = req.body;
+  const { inboxId, name, pixelId, accessToken, webhookSecret, stageMap, tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret, googleCalendarId } = req.body;
   if (!inboxId || !pixelId || !accessToken) {
     return res.status(400).json({ error: "inboxId, pixelId e accessToken são obrigatórios" });
   }
@@ -534,7 +551,8 @@ app.post("/api/clients", authMiddleware, (req, res) => {
     tiktokPixelId: tiktokPixelId || "",
     tiktokAccessToken: tiktokAccessToken || "",
     ga4MeasurementId: ga4MeasurementId || "",
-    ga4ApiSecret: ga4ApiSecret || ""
+    ga4ApiSecret: ga4ApiSecret || "",
+    googleCalendarId: googleCalendarId || ""
   };
   saveClients(clients);
   log("success", inboxId, `Cliente "${clients[inboxId].name}" salvo`);
@@ -563,6 +581,110 @@ app.delete("/api/clients/:inboxId", authMiddleware, (req, res) => {
 
   log("info", inboxId, `Cliente "${name}" e todos os seus dados locais foram removidos`);
   res.json({ ok: true });
+});
+
+// ─── Google Calendar Endpoints ──────────────────────────────────────────────────
+app.get("/api/calendar/:inboxId/events", authMiddleware, async (req, res) => {
+  try {
+    const clients = loadClients();
+    const client = clients[req.params.inboxId];
+    if (!client || !client.googleCalendarId) return res.status(400).json({ error: "Cliente não possui Calendar ID configurado." });
+
+    const auth = getCalendarAuth();
+    const calendar = google.calendar({ version: "v3", auth });
+
+    const { data } = await calendar.events.list({
+      calendarId: client.googleCalendarId,
+      timeMin: req.query.from ? new Date(req.query.from).toISOString() : new Date().toISOString(),
+      timeMax: req.query.to ? new Date(req.query.to).toISOString() : undefined,
+      maxResults: 50,
+      singleEvents: true,
+      orderBy: "startTime",
+    });
+
+    res.json(data.items || []);
+  } catch (error) {
+    console.error("Erro no Calendar GET:", error.message);
+    res.status(500).json({ error: "Erro ao buscar eventos do Google Calendar." });
+  }
+});
+
+app.post("/api/calendar/:inboxId/events", authMiddleware, async (req, res) => {
+  try {
+    const clients = loadClients();
+    const client = clients[req.params.inboxId];
+    if (!client || !client.googleCalendarId) return res.status(400).json({ error: "Cliente não configurado." });
+
+    const { summary, description, start, end, location } = req.body;
+    const auth = getCalendarAuth();
+    const calendar = google.calendar({ version: "v3", auth });
+
+    const { data } = await calendar.events.insert({
+      calendarId: client.googleCalendarId,
+      resource: {
+        summary,
+        description,
+        location,
+        start: { dateTime: start, timeZone: "America/Sao_Paulo" },
+        end: { dateTime: end, timeZone: "America/Sao_Paulo" },
+      },
+    });
+
+    res.json(data);
+  } catch (error) {
+    console.error("Erro no Calendar POST:", error.message);
+    res.status(500).json({ error: "Erro ao criar evento." });
+  }
+});
+
+app.patch("/api/calendar/:inboxId/events/:eventId", authMiddleware, async (req, res) => {
+  try {
+    const clients = loadClients();
+    const client = clients[req.params.inboxId];
+    if (!client || !client.googleCalendarId) return res.status(400).json({ error: "Cliente não configurado." });
+
+    const { summary, description, start, end, location } = req.body;
+    const auth = getCalendarAuth();
+    const calendar = google.calendar({ version: "v3", auth });
+
+    const { data } = await calendar.events.patch({
+      calendarId: client.googleCalendarId,
+      eventId: req.params.eventId,
+      resource: {
+        summary,
+        description,
+        location,
+        start: start ? { dateTime: start, timeZone: "America/Sao_Paulo" } : undefined,
+        end: end ? { dateTime: end, timeZone: "America/Sao_Paulo" } : undefined,
+      },
+    });
+
+    res.json(data);
+  } catch (error) {
+    console.error("Erro no Calendar PATCH:", error.message);
+    res.status(500).json({ error: "Erro ao editar evento." });
+  }
+});
+
+app.delete("/api/calendar/:inboxId/events/:eventId", authMiddleware, async (req, res) => {
+  try {
+    const clients = loadClients();
+    const client = clients[req.params.inboxId];
+    if (!client || !client.googleCalendarId) return res.status(400).json({ error: "Cliente não configurado." });
+
+    const auth = getCalendarAuth();
+    const calendar = google.calendar({ version: "v3", auth });
+
+    await calendar.events.delete({
+      calendarId: client.googleCalendarId,
+      eventId: req.params.eventId,
+    });
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Erro no Calendar DELETE:", error.message);
+    res.status(500).json({ error: "Erro ao excluir evento." });
+  }
 });
 
 // ── Webhook endpoint ──────────────────────────────────────────────────────────

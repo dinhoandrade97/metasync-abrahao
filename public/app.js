@@ -169,6 +169,7 @@ function fillForm(inboxId, data) {
   document.getElementById("f-tiktok-token").value = data.tiktokAccessToken || "";
   document.getElementById("f-ga4-id").value = data.ga4MeasurementId || "";
   document.getElementById("f-ga4-secret").value = data.ga4ApiSecret || "";
+  document.getElementById("f-google-calendar-id").value = data.googleCalendarId || "";
 
   document.getElementById("form-client-title").textContent = data.name || `Inbox ${inboxId}`;
   document.getElementById("badge-connected").style.display = "inline-flex";
@@ -196,6 +197,7 @@ function newClient() {
   document.getElementById("f-tiktok-token").value = "";
   document.getElementById("f-ga4-id").value = "";
   document.getElementById("f-ga4-secret").value = "";
+  document.getElementById("f-google-calendar-id").value = "";
 
   renderClientList();
   renderStageMap({});
@@ -275,6 +277,7 @@ async function saveClient() {
   const tiktokAccessToken = document.getElementById("f-tiktok-token").value.trim();
   const ga4MeasurementId  = document.getElementById("f-ga4-id").value.trim();
   const ga4ApiSecret      = document.getElementById("f-ga4-secret").value.trim();
+  const googleCalendarId  = document.getElementById("f-google-calendar-id").value.trim();
 
   if (!inboxId || !pixelId || !token) {
     toast("Preencha Inbox ID, Pixel ID e Access Token", "err"); return;
@@ -288,7 +291,7 @@ async function saveClient() {
       headers: getAuthHeaders(),
       body: JSON.stringify({ 
         inboxId, name, pixelId, accessToken: token, webhookSecret: secret, baseUrl, stageMap,
-        tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret
+        tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret, googleCalendarId
       }),
     });
     if (res.status === 401) return showLogin();
@@ -695,4 +698,141 @@ function renderChart(labels, successes, fails, dailyEvents = []) {
       }
     }
   });
+}
+
+/* ─── Google Calendar ───────────────────────────────────────────────────────── */
+async function loadCalendarEvents() {
+  if (!activeInboxId) return;
+  const container = document.getElementById("calendar-container");
+  container.innerHTML = '<div class="log-empty">Carregando eventos...</div>';
+
+  try {
+    const res = await fetch(`/api/calendar/${activeInboxId}/events`, { headers: getAuthHeaders() });
+    if (!res.ok) {
+      if (res.status === 400) {
+        container.innerHTML = '<div class="log-empty">Este cliente não possui um Google Calendar ID configurado.</div>';
+      } else {
+        container.innerHTML = '<div class="log-empty">Erro ao carregar eventos da agenda.</div>';
+      }
+      return;
+    }
+    const events = await res.json();
+    if (!events || events.length === 0) {
+      container.innerHTML = '<div class="log-empty">Nenhum evento futuro encontrado.</div>';
+      return;
+    }
+
+    container.innerHTML = "";
+    events.forEach(ev => {
+      const start = ev.start.dateTime || ev.start.date;
+      const end = ev.end.dateTime || ev.end.date;
+      
+      const item = document.createElement("div");
+      item.className = "stat-card"; // Reusing styles for now, or making a specific class
+      item.style.cursor = "pointer";
+      item.style.marginBottom = "10px";
+      item.style.display = "flex";
+      item.style.justifyContent = "space-between";
+      item.style.alignItems = "center";
+      item.onclick = () => openCalendarEventModal(ev);
+
+      item.innerHTML = `
+        <div>
+          <div style="font-weight: 600; font-size: 14px; color: var(--text-color);">${ev.summary || "Sem título"}</div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">${new Date(start).toLocaleString()} - ${new Date(end).toLocaleString()}</div>
+          ${ev.location ? `<div style="font-size: 11px; color: var(--blue); margin-top: 4px;">📍 ${ev.location}</div>` : ''}
+        </div>
+        <div style="color: var(--text-muted);">
+          <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </div>
+      `;
+      container.appendChild(item);
+    });
+  } catch (err) {
+    console.error("Calendar Load error", err);
+    container.innerHTML = '<div class="log-empty">Erro ao carregar agenda.</div>';
+  }
+}
+
+function openCalendarEventModal(ev = null) {
+  document.getElementById("calendar-modal").classList.add("show");
+  if (ev) {
+    document.getElementById("calendar-modal-title").textContent = "Editar Evento";
+    document.getElementById("f-cal-event-id").value = ev.id;
+    document.getElementById("f-cal-title").value = ev.summary || "";
+    document.getElementById("f-cal-desc").value = ev.description || "";
+    document.getElementById("f-cal-location").value = ev.location || "";
+    
+    if (ev.start.dateTime) {
+      document.getElementById("f-cal-start").value = ev.start.dateTime.slice(0, 16);
+    }
+    if (ev.end.dateTime) {
+      document.getElementById("f-cal-end").value = ev.end.dateTime.slice(0, 16);
+    }
+    document.getElementById("btn-delete-cal").style.display = "block";
+  } else {
+    document.getElementById("calendar-modal-title").textContent = "Novo Evento";
+    document.getElementById("f-cal-event-id").value = "";
+    document.getElementById("f-cal-title").value = "";
+    document.getElementById("f-cal-desc").value = "";
+    document.getElementById("f-cal-location").value = "";
+    document.getElementById("f-cal-start").value = "";
+    document.getElementById("f-cal-end").value = "";
+    document.getElementById("btn-delete-cal").style.display = "none";
+  }
+}
+
+function closeCalendarEventModal() {
+  document.getElementById("calendar-modal").classList.remove("show");
+}
+
+async function saveCalendarEvent() {
+  if (!activeInboxId) return;
+  const id = document.getElementById("f-cal-event-id").value;
+  const summary = document.getElementById("f-cal-title").value.trim();
+  const start = document.getElementById("f-cal-start").value;
+  const end = document.getElementById("f-cal-end").value;
+  const location = document.getElementById("f-cal-location").value.trim();
+  const description = document.getElementById("f-cal-desc").value.trim();
+
+  if (!summary || !start || !end) {
+    toast("Preencha o título e os horários", "err");
+    return;
+  }
+
+  const payload = { summary, description, location, start: new Date(start).toISOString(), end: new Date(end).toISOString() };
+
+  try {
+    const res = await fetch(\`/api/calendar/\${activeInboxId}/events\${id ? \`/\${id}\` : ''}\`, {
+      method: id ? "PATCH" : "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error();
+    toast(id ? "Evento atualizado!" : "Evento criado!", "success");
+    closeCalendarEventModal();
+    loadCalendarEvents();
+  } catch {
+    toast("Erro ao salvar evento", "err");
+  }
+}
+
+async function deleteCalendarEvent() {
+  if (!activeInboxId) return;
+  const id = document.getElementById("f-cal-event-id").value;
+  if (!id) return;
+  if (!confirm("Tem certeza que deseja excluir este evento?")) return;
+
+  try {
+    const res = await fetch(\`/api/calendar/\${activeInboxId}/events/\${id}\`, {
+      method: "DELETE",
+      headers: getAuthHeaders()
+    });
+    if (!res.ok) throw new Error();
+    toast("Evento excluído!", "success");
+    closeCalendarEventModal();
+    loadCalendarEvents();
+  } catch {
+    toast("Erro ao excluir", "err");
+  }
 }
