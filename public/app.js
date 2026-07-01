@@ -815,7 +815,7 @@ async function saveCalendarEvent() {
   const payload = { summary, description, location, start: new Date(start).toISOString(), end: new Date(end).toISOString() };
 
   try {
-    const res = await fetch(\`/api/calendar/\${activeInboxId}/events\${id ? \`/\${id}\` : ''}\`, {
+    const res = await fetch(`/api/calendar/${activeInboxId}/events${id ? `/${id}` : ''}`, {
       method: id ? "PATCH" : "POST",
       headers: getAuthHeaders(),
       body: JSON.stringify(payload),
@@ -836,7 +836,7 @@ async function deleteCalendarEvent() {
   if (!confirm("Tem certeza que deseja excluir este evento?")) return;
 
   try {
-    const res = await fetch(\`/api/calendar/\${activeInboxId}/events/\${id}\`, {
+    const res = await fetch(`/api/calendar/${activeInboxId}/events/${id}`, {
       method: "DELETE",
       headers: getAuthHeaders()
     });
