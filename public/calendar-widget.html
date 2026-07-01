@@ -51,10 +51,13 @@
   <div id="view-list">
     <div class="header">
       <h2>Próximos Eventos</h2>
+      <select id="inbox-select" onchange="manualSelectInbox(this.value)" style="flex:1; margin: 0 10px; max-width: 150px; font-size: 11px;">
+        <option value="">Selecione...</option>
+      </select>
       <button class="btn" onclick="showForm()">+ Novo</button>
     </div>
     <div id="events-container">
-      <div style="color:var(--text-muted); text-align:center; padding: 20px;">Aguardando Chatwoot...</div>
+      <div style="color:var(--text-muted); text-align:center; padding: 20px;">Selecione um cliente acima...</div>
     </div>
   </div>
 
@@ -103,8 +106,13 @@
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (data.event === "appContext" && data.data) {
           if (data.data.conversation && data.data.conversation.inbox_id) {
-            inboxId = data.data.conversation.inbox_id;
-            loadEvents();
+            const newInboxId = data.data.conversation.inbox_id;
+            if (newInboxId !== inboxId) {
+              inboxId = newInboxId;
+              const sel = document.getElementById("inbox-select");
+              if (sel) sel.value = inboxId;
+              loadEvents();
+            }
           }
         }
       } catch (e) {}
@@ -116,6 +124,30 @@
     function getHeaders() {
       return { "Content-Type": "application/json", "Authorization": "Bearer " + token };
     }
+
+    async function loadInboxes() {
+      if (!token) return;
+      try {
+        const res = await fetch('/api/clients', { headers: getHeaders() });
+        if (!res.ok) return;
+        const clients = await res.json();
+        const sel = document.getElementById("inbox-select");
+        Object.keys(clients).forEach(id => {
+          const opt = document.createElement("option");
+          opt.value = id;
+          opt.textContent = clients[id].name || \`Inbox \${id}\`;
+          sel.appendChild(opt);
+        });
+      } catch (e) {}
+    }
+    
+    function manualSelectInbox(id) {
+      if (!id) return;
+      inboxId = id;
+      loadEvents();
+    }
+    
+    loadInboxes();
 
     async function loadEvents() {
       if (!inboxId || !token) return;
