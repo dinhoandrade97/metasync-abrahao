@@ -6,6 +6,11 @@
   <title>Agenda</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  
+  <!-- FullCalendar CSS and Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/locales/pt-br.global.min.js"></script>
+
   <style>
     :root {
       --bg: #0f172a;
@@ -27,38 +32,58 @@
     .btn { background: var(--primary); color: #fff; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; }
     .btn:hover { opacity: 0.9; }
     .btn-danger { background: var(--danger); }
-    .event-card {
-      background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
-      padding: 10px; margin-bottom: 8px; cursor: pointer;
-    }
-    .event-card:hover { border-color: var(--primary); }
-    .event-title { font-weight: 600; margin-bottom: 4px; }
-    .event-time { font-size: 11px; color: var(--text-muted); }
     
     .form-group { margin-bottom: 10px; }
     .form-group label { display: block; font-size: 11px; margin-bottom: 4px; color: var(--text-muted); }
     input, textarea {
       width: 100%; padding: 6px 8px; border-radius: 6px;
-      border: 1px solid var(--border); background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); background: var(--card-bg); color: var(--text);
       font-family: inherit; font-size: 12px;
     }
     .hidden { display: none !important; }
     .flex { display: flex; gap: 8px; }
+
+    /* FullCalendar Dark Theme Adjustments for Widget */
+    #calendar {
+      margin-top: 10px;
+      background: var(--card-bg);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 12px; /* Smaller text for widget */
+    }
+    .fc-theme-standard td, .fc-theme-standard th { border-color: var(--border); }
+    .fc-theme-standard .fc-scrollgrid { border-color: var(--border); }
+    .fc-day-today { background: rgba(59, 130, 246, 0.1) !important; }
+    .fc .fc-toolbar-title { font-size: 1.1em; color: var(--text); font-weight: 600; }
+    .fc .fc-button-primary { background-color: var(--primary); border-color: var(--primary); font-size: 11px; padding: 4px 8px; }
+    .fc .fc-button-primary:not(:disabled):active, .fc .fc-button-primary:not(:disabled).fc-button-active {
+      background-color: #2563eb; border-color: #2563eb;
+    }
+    .fc-event {
+      cursor: pointer;
+    }
+    
+    /* Loading overlay */
+    #loading-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.7); display: flex; align-items: center; justify-content: center;
+      z-index: 10; font-weight: 600; color: var(--text);
+    }
   </style>
 </head>
 <body>
 
-  <div id="view-list">
+  <div id="view-list" style="position: relative; min-height: 200px;">
     <div class="header">
-      <h2>Próximos Eventos</h2>
-      <select id="inbox-select" onchange="manualSelectInbox(this.value)" style="flex:1; margin: 0 10px; max-width: 150px; font-size: 11px;">
+      <h2>Agenda</h2>
+      <select id="inbox-select" onchange="manualSelectInbox(this.value)" style="flex:1; margin: 0 10px; max-width: 150px; font-size: 11px; padding: 4px; background: var(--card-bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px;">
         <option value="">Selecione...</option>
       </select>
       <button class="btn" onclick="showForm()">+ Novo</button>
     </div>
-    <div id="events-container">
-      <div style="color:var(--text-muted); text-align:center; padding: 20px;">Selecione um cliente acima...</div>
-    </div>
+    
+    <div id="loading-overlay" class="hidden">Carregando...</div>
+    <div id="calendar"></div>
   </div>
 
   <div id="view-form" class="hidden">
@@ -95,9 +120,10 @@
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     let inboxId = null;
+    let calendar = null;
 
     if (!token) {
-      document.getElementById("events-container").innerHTML = '<div style="color:var(--danger)">Token ausente na URL. Configure o Dashboard App no Chatwoot com ?token=SuaSenha.</div>';
+      document.body.innerHTML = '<div style="color:var(--danger); padding: 20px;">Token ausente na URL. Configure o Dashboard App no Chatwoot com ?token=SuaSenha.</div>';
     }
 
     let currentAgentEmail = null;
@@ -173,43 +199,101 @@
       loadEvents();
     }
 
+    function initCalendar() {
+      const calendarEl = document.getElementById('calendar');
+      calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'pt-br',
+        height: 'auto',
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        },
+        buttonText: {
+          today: 'Hoje',
+          month: 'Mês',
+          week: 'Semana',
+          day: 'Dia'
+        },
+        dateClick: function(info) {
+          if (!inboxId) {
+            alert("Selecione um cliente primeiro.");
+            return;
+          }
+          showForm();
+          const clickedDate = info.dateStr; // yyyy-mm-dd
+          document.getElementById("form-title").textContent = "Novo Evento";
+          document.getElementById("f-start").value = clickedDate + "T09:00";
+          document.getElementById("f-end").value = clickedDate + "T10:00";
+        },
+        eventClick: function(info) {
+          const ev = info.event;
+          showForm();
+          document.getElementById("form-title").textContent = "Editar Evento";
+          document.getElementById("f-id").value = ev.id;
+          document.getElementById("f-title").value = ev.title;
+          document.getElementById("f-location").value = ev.extendedProps.location || "";
+          
+          if (ev.start) {
+            document.getElementById("f-start").value = offsetToLocalISO(ev.start);
+          }
+          if (ev.end) {
+            document.getElementById("f-end").value = offsetToLocalISO(ev.end);
+          } else if (ev.start) {
+            document.getElementById("f-end").value = offsetToLocalISO(ev.start);
+          }
+          document.getElementById("btn-delete").classList.remove("hidden");
+        }
+      });
+      calendar.render();
+    }
+
+    function offsetToLocalISO(date) {
+      const tzoffset = (new Date()).getTimezoneOffset() * 60000;
+      return (new Date(date - tzoffset)).toISOString().slice(0, 16);
+    }
+
     async function loadEvents() {
       if (!inboxId || !token) return;
-      const container = document.getElementById("events-container");
-      container.innerHTML = '<div style="color:var(--text-muted); text-align:center;">Carregando...</div>';
+      const loader = document.getElementById("loading-overlay");
+      
+      if (!calendar) initCalendar();
+      
+      loader.classList.remove("hidden");
       
       try {
         const res = await fetch(`/api/calendar/${inboxId}/events`, { headers: getHeaders() });
         if (!res.ok) throw new Error();
         const events = await res.json();
         
-        if (events.length === 0) {
-          container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding: 20px;">Nenhum evento agendado.</div>';
-          return;
-        }
-
-        container.innerHTML = "";
+        calendar.removeAllEvents();
+        
         events.forEach(ev => {
           const start = ev.start.dateTime || ev.start.date;
-          
-          const card = document.createElement("div");
-          card.className = "event-card";
-          card.onclick = () => editEvent(ev);
-          card.innerHTML = `
-            <div class="event-title">${ev.summary || "Sem Título"}</div>
-            <div class="event-time">${new Date(start).toLocaleString()}</div>
-            ${ev.location ? `<div class="event-time" style="color:var(--primary); margin-top:2px;">📍 ${ev.location}</div>` : ''}
-          `;
-          container.appendChild(card);
+          const end = ev.end.dateTime || ev.end.date;
+          calendar.addEvent({
+            id: ev.id,
+            title: ev.summary || "Sem Título",
+            start: start,
+            end: end,
+            extendedProps: {
+              location: ev.location
+            },
+            color: 'var(--primary)'
+          });
         });
       } catch (e) {
-        container.innerHTML = '<div style="color:var(--danger); text-align:center;">Erro ao carregar.</div>';
+        alert("Erro ao carregar eventos.");
+      } finally {
+        loader.classList.add("hidden");
       }
     }
 
     function showList() {
       document.getElementById("view-form").classList.add("hidden");
       document.getElementById("view-list").classList.remove("hidden");
+      if (calendar) calendar.render(); // Re-render to fix sizing issues after unhiding
     }
 
     function showForm() {
@@ -221,17 +305,6 @@
       document.getElementById("f-end").value = "";
       document.getElementById("f-location").value = "";
       document.getElementById("btn-delete").classList.add("hidden");
-    }
-
-    function editEvent(ev) {
-      showForm();
-      document.getElementById("form-title").textContent = "Editar Evento";
-      document.getElementById("f-id").value = ev.id;
-      document.getElementById("f-title").value = ev.summary || "";
-      document.getElementById("f-location").value = ev.location || "";
-      if (ev.start.dateTime) document.getElementById("f-start").value = ev.start.dateTime.slice(0, 16);
-      if (ev.end.dateTime) document.getElementById("f-end").value = ev.end.dateTime.slice(0, 16);
-      document.getElementById("btn-delete").classList.remove("hidden");
     }
 
     async function saveEvent() {
@@ -260,7 +333,7 @@
     }
 
     async function deleteEvent() {
-      if (!confirm("Tem certeza?")) return;
+      if (!confirm("Tem certeza que deseja excluir este evento?")) return;
       const id = document.getElementById("f-id").value;
       try {
         const res = await fetch(`/api/calendar/${inboxId}/events/${id}`, {
