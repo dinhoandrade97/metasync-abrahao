@@ -119,7 +119,7 @@
   <script>
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
-    let inboxId = null;
+    let inboxId = urlParams.get('inboxId') || null;
     let calendar = null;
 
     if (!token) {
@@ -187,6 +187,10 @@
             opt.textContent = clients[id].name || `Inbox ${id}`;
             sel.appendChild(opt);
           });
+          if (inboxId && clients[inboxId]) {
+            sel.value = inboxId;
+            loadEvents();
+          }
         }
       } catch (e) {
         sel.innerHTML = `<option>Erro: ${e.message}</option>`;
