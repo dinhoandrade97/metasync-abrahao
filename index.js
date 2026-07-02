@@ -569,7 +569,7 @@ app.get("/api/clients/full/:inboxId", authMiddleware, (req, res) => {
 });
 
 app.post("/api/clients", authMiddleware, (req, res) => {
-  const { inboxId, name, pixelId, accessToken, webhookSecret, stageMap, tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret, googleCalendarId } = req.body;
+  const { inboxId, name, pixelId, accessToken, webhookSecret, stageMap, tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret, googleCalendarId, allowedEmails } = req.body;
   if (!inboxId || !pixelId || !accessToken) {
     return res.status(400).json({ error: "inboxId, pixelId e accessToken são obrigatórios" });
   }
@@ -581,7 +581,8 @@ app.post("/api/clients", authMiddleware, (req, res) => {
     tiktokAccessToken: tiktokAccessToken || "",
     ga4MeasurementId: ga4MeasurementId || "",
     ga4ApiSecret: ga4ApiSecret || "",
-    googleCalendarId: googleCalendarId || ""
+    googleCalendarId: googleCalendarId || "",
+    allowedEmails: allowedEmails || ""
   };
   saveClients(clients);
   log("success", inboxId, `Cliente "${clients[inboxId].name}" salvo`);
