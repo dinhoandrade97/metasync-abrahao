@@ -145,7 +145,7 @@
         const url = agentEmail ? '/api/clients?agentEmail=' + encodeURIComponent(agentEmail) : '/api/clients';
         const res = await fetch(url, { headers: getHeaders() });
         if (!res.ok) {
-          sel.innerHTML = \`<option>Erro API: \${res.status}</option>\`;
+          sel.innerHTML = `<option>Erro API: ${res.status}</option>`;
           return;
         }
         const clients = await res.json();
@@ -158,12 +158,12 @@
           keys.forEach(id => {
             const opt = document.createElement("option");
             opt.value = id;
-            opt.textContent = clients[id].name || \`Inbox \${id}\`;
+            opt.textContent = clients[id].name || `Inbox ${id}`;
             sel.appendChild(opt);
           });
         }
       } catch (e) {
-        sel.innerHTML = \`<option>Erro: \${e.message}</option>\`;
+        sel.innerHTML = `<option>Erro: ${e.message}</option>`;
       }
     }
     
@@ -198,7 +198,7 @@
           card.innerHTML = `
             <div class="event-title">${ev.summary || "Sem Título"}</div>
             <div class="event-time">${new Date(start).toLocaleString()}</div>
-            ${ev.location ? \`<div class="event-time" style="color:var(--primary); margin-top:2px;">📍 ${ev.location}</div>\` : ''}
+            ${ev.location ? `<div class="event-time" style="color:var(--primary); margin-top:2px;">📍 ${ev.location}</div>` : ''}
           `;
           container.appendChild(card);
         });
@@ -246,7 +246,7 @@
       const payload = { summary, location, start: new Date(start).toISOString(), end: new Date(end).toISOString() };
 
       try {
-        const res = await fetch(`/api/calendar/${inboxId}/events${id ? \`/\${id}\` : ''}`, {
+        const res = await fetch(`/api/calendar/${inboxId}/events${id ? `/${id}` : ''}`, {
           method: id ? "PATCH" : "POST",
           headers: getHeaders(),
           body: JSON.stringify(payload)
