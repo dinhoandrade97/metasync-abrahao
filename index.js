@@ -532,15 +532,32 @@ app.get("/api/logs/history", authMiddleware, (req, res) => {
 });
 
 // ── CRUD Clients ──────────────────────────────────────────────────────────────
-app.get("/api/clients", authMiddleware, (_req, res) => {
+app.get("/api/clients", authMiddleware, (req, res) => {
   const clients = loadClients();
+  const agentEmail = req.query.agentEmail ? req.query.agentEmail.toLowerCase().trim() : null;
+  
   // Mascara o access token
-  const safe = Object.fromEntries(
+  let safe = Object.fromEntries(
     Object.entries(clients).map(([id, c]) => [id, {
       ...c,
       accessToken: c.accessToken ? `${c.accessToken.slice(0, 8)}...` : "",
     }])
   );
+
+  // Filtra por agentEmail se fornecido
+  if (agentEmail) {
+    const filtered = {};
+    for (const id in safe) {
+      const c = safe[id];
+      const allowedStr = c.allowedEmails || "";
+      const allowedList = allowedStr.split(",").map(e => e.trim().toLowerCase()).filter(e => e);
+      if (allowedList.length === 0 || allowedList.includes(agentEmail)) {
+        filtered[id] = c;
+      }
+    }
+    safe = filtered;
+  }
+
   res.json(safe);
 });
 

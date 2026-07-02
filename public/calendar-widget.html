@@ -100,11 +100,24 @@
       document.getElementById("events-container").innerHTML = '<div style="color:var(--danger)">Token ausente na URL. Configure o Dashboard App no Chatwoot com ?token=SuaSenha.</div>';
     }
 
+    let currentAgentEmail = null;
+    let loadInboxesTimeout = setTimeout(() => { 
+      loadInboxes(); // Fallback se o Chatwoot demorar
+    }, 2000);
+
     // Escutar mensagem do Chatwoot
     window.addEventListener("message", function (event) {
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         if (data.event === "appContext" && data.data) {
+          
+          // Capturar e-mail do atendente logado (Segurança da Agenda Global)
+          if (data.data.currentAgent && data.data.currentAgent.email) {
+            currentAgentEmail = data.data.currentAgent.email;
+            clearTimeout(loadInboxesTimeout);
+            loadInboxes(currentAgentEmail);
+          }
+
           if (data.data.conversation && data.data.conversation.inbox_id) {
             const newInboxId = data.data.conversation.inbox_id;
             if (newInboxId !== inboxId) {
@@ -125,20 +138,33 @@
       return { "Content-Type": "application/json", "Authorization": "Bearer " + token };
     }
 
-    async function loadInboxes() {
+    async function loadInboxes(agentEmail = null) {
       if (!token) return;
+      const sel = document.getElementById("inbox-select");
       try {
-        const res = await fetch('/api/clients', { headers: getHeaders() });
-        if (!res.ok) return;
+        const url = agentEmail ? '/api/clients?agentEmail=' + encodeURIComponent(agentEmail) : '/api/clients';
+        const res = await fetch(url, { headers: getHeaders() });
+        if (!res.ok) {
+          sel.innerHTML = \`<option>Erro API: \${res.status}</option>\`;
+          return;
+        }
         const clients = await res.json();
-        const sel = document.getElementById("inbox-select");
-        Object.keys(clients).forEach(id => {
-          const opt = document.createElement("option");
-          opt.value = id;
-          opt.textContent = clients[id].name || \`Inbox \${id}\`;
-          sel.appendChild(opt);
-        });
-      } catch (e) {}
+        
+        sel.innerHTML = '<option value="">Selecione...</option>';
+        const keys = Object.keys(clients);
+        if (keys.length === 0) {
+          sel.innerHTML = '<option value="">Nenhuma agenda autorizada</option>';
+        } else {
+          keys.forEach(id => {
+            const opt = document.createElement("option");
+            opt.value = id;
+            opt.textContent = clients[id].name || \`Inbox \${id}\`;
+            sel.appendChild(opt);
+          });
+        }
+      } catch (e) {
+        sel.innerHTML = \`<option>Erro: \${e.message}</option>\`;
+      }
     }
     
     function manualSelectInbox(id) {
@@ -146,8 +172,6 @@
       inboxId = id;
       loadEvents();
     }
-    
-    loadInboxes();
 
     async function loadEvents() {
       if (!inboxId || !token) return;
