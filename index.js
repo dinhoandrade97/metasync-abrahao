@@ -355,19 +355,19 @@ async function processWebhook(payload, client, inboxId) {
   recentEvents.add(cacheKey);
   setTimeout(() => recentEvents.delete(cacheKey), 5000);
 
-  // ── conversation_created → Lead ──────────────────────────────────────────────
+  // ── conversation_created → Etapa Inicial ─────────────────────────────────────
   if (eventType === "conversation_created") {
-    const leadMapping = Object.entries(client.stageMap || {})
-      .find(([, meta]) => meta === "Lead");
-    if (!leadMapping) {
-      log("info", inboxId, "conversation_created recebido mas Lead não configurado — ignorado");
+    const stages = Object.entries(client.stageMap || {});
+    if (stages.length === 0) {
+      log("info", inboxId, "conversation_created recebido mas nenhuma etapa configurada — ignorado");
       return;
     }
+    const [initialStageName, metaEventName] = stages[0];
 
     // Ignora conversas criadas ativamente pelo agente (Outbound)
     const isOutbound = payload?.messages?.some(m => [1, 2].includes(m.message_type)) && !payload?.messages?.some(m => m.message_type === 0);
     if (isOutbound) {
-      log("info", inboxId, "Conversa iniciada pelo atendente (Outbound) — Evento Lead ignorado");
+      log("info", inboxId, "Conversa iniciada pelo atendente (Outbound) — Evento inicial ignorado");
       return;
     }
 
@@ -380,9 +380,9 @@ async function processWebhook(payload, client, inboxId) {
       additional_attributes: sender.additional_attributes || {},
     };
 
-    const eventId = `metasync_${convId}_lead`;
-    log("info", inboxId, `Lead | Conv ${convId} | ${contact.name || "desconhecido"}`);
-    const eventData = buildEvent("Lead", { eventId, conversationId: convId, contact, dealValue: 0, stageName: "Novo Lead" });
+    const eventId = `metasync_${convId}_initial`;
+    log("info", inboxId, `${metaEventName} | Conv ${convId} | ${contact.name || "desconhecido"}`);
+    const eventData = buildEvent(metaEventName, { eventId, conversationId: convId, contact, dealValue: 0, stageName: initialStageName });
     
     // Dispara para todas as plataformas configuradas em paralelo
     await Promise.allSettled([
@@ -414,9 +414,10 @@ async function processWebhook(payload, client, inboxId) {
       return;
     }
 
-    // Prevenção contra disparo duplo (conversation_created já mandou Lead)
-    if (!from && metaEvent === "Lead") {
-      log("info", inboxId, `Ignorado: Tarefa recém-criada na etapa "${stageName}" (Lead). O evento já foi enviado na abertura da conversa.`);
+    // Prevenção contra disparo duplo (conversation_created já mandou o evento da etapa inicial)
+    const initialStageName = Object.keys(client.stageMap || {})[0];
+    if (!from && stageName === initialStageName) {
+      log("info", inboxId, `Ignorado: Tarefa recém-criada na etapa "${stageName}". O evento já foi enviado na abertura da conversa.`);
       return;
     }
 
