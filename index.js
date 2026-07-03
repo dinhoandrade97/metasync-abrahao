@@ -390,6 +390,30 @@ async function processWebhook(payload, client, inboxId) {
       sendToTikTok(client.tiktokPixelId, client.tiktokAccessToken, eventData, convId, inboxId),
       sendToGA4(client.ga4MeasurementId, client.ga4ApiSecret, eventData, convId, inboxId)
     ]);
+
+    // Atualizar custom attribute do contato com o link da agenda
+    if (client.chatwootAccessToken && payload?.account?.id && sender?.id) {
+      const chatwootUrl = "https://chatwoot.agenciaabrahao.io";
+      const agendaUrl = `https://metasync.agenciaabrahao.io/calendar-widget.html?token=metasync_admin_secret_token&inboxId=${inboxId}`;
+      
+      fetch(`${chatwootUrl}/api/v1/accounts/${payload.account.id}/contacts/${sender.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "api_access_token": client.chatwootAccessToken
+        },
+        body: JSON.stringify({
+          custom_attributes: {
+            ...(sender.custom_attributes || {}),
+            link_da_agenda: agendaUrl
+          }
+        })
+      }).then(r => r.json()).then(res => {
+        if (res.id) log("info", inboxId, `Agenda auto-preenchida para contato ${sender.id}`);
+      }).catch(err => {
+        log("error", inboxId, `Erro ao auto-preencher agenda: ${err.message}`);
+      });
+    }
     return;
   }
 
@@ -570,7 +594,7 @@ app.get("/api/clients/full/:inboxId", authMiddleware, (req, res) => {
 });
 
 app.post("/api/clients", authMiddleware, (req, res) => {
-  const { inboxId, name, pixelId, accessToken, webhookSecret, stageMap, tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret, googleCalendarId, allowedEmails } = req.body;
+  const { inboxId, name, pixelId, accessToken, webhookSecret, stageMap, tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret, googleCalendarId, allowedEmails, chatwootAccessToken } = req.body;
   if (!inboxId || !pixelId || !accessToken) {
     return res.status(400).json({ error: "inboxId, pixelId e accessToken são obrigatórios" });
   }
@@ -583,7 +607,8 @@ app.post("/api/clients", authMiddleware, (req, res) => {
     ga4MeasurementId: ga4MeasurementId || "",
     ga4ApiSecret: ga4ApiSecret || "",
     googleCalendarId: googleCalendarId || "",
-    allowedEmails: allowedEmails || ""
+    allowedEmails: allowedEmails || "",
+    chatwootAccessToken: chatwootAccessToken || ""
   };
   saveClients(clients);
   log("success", inboxId, `Cliente "${clients[inboxId].name}" salvo`);

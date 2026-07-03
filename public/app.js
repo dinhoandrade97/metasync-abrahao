@@ -199,6 +199,7 @@ function fillForm(inboxId, data) {
   document.getElementById("f-ga4-secret").value = data.ga4ApiSecret || "";
   document.getElementById("f-google-calendar-id").value = data.googleCalendarId || "";
   document.getElementById("f-allowed-emails").value = data.allowedEmails || "";
+  document.getElementById("f-chatwoot-access-token").value = data.chatwootAccessToken || "";
 
   document.getElementById("form-client-title").textContent = data.name || `Inbox ${inboxId}`;
   document.getElementById("badge-connected").style.display = "inline-flex";
@@ -308,6 +309,7 @@ async function saveClient() {
   const ga4ApiSecret      = document.getElementById("f-ga4-secret").value.trim();
   const googleCalendarId  = document.getElementById("f-google-calendar-id").value.trim();
   const allowedEmails     = document.getElementById("f-allowed-emails").value.trim();
+  const chatwootAccessToken = document.getElementById("f-chatwoot-access-token").value.trim();
 
   if (!inboxId || !pixelId || !token) {
     toast("Preencha Inbox ID, Pixel ID e Access Token", "err"); return;
@@ -321,7 +323,7 @@ async function saveClient() {
       headers: getAuthHeaders(),
       body: JSON.stringify({ 
         inboxId, name, pixelId, accessToken: token, webhookSecret: secret, baseUrl, stageMap,
-        tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret, googleCalendarId, allowedEmails
+        tiktokPixelId, tiktokAccessToken, ga4MeasurementId, ga4ApiSecret, googleCalendarId, allowedEmails, chatwootAccessToken
       }),
     });
     if (res.status === 401) return showLogin();
