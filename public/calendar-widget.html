@@ -328,11 +328,14 @@
           headers: getHeaders(),
           body: JSON.stringify(payload)
         });
-        if (!res.ok) throw new Error();
+        if (!res.ok) {
+          const errData = await res.json().catch(()=>({}));
+          throw new Error(errData.error || `HTTP ${res.status}`);
+        }
         showList();
         loadEvents();
       } catch (e) {
-        alert("Erro ao salvar");
+        alert("Erro ao salvar: " + (e.message || "Falha na conexão (Verifique adblocker)"));
       }
     }
 
@@ -343,11 +346,14 @@
         const res = await fetch(`/api/calendar/${inboxId}/events/${id}`, {
           method: "DELETE", headers: getHeaders()
         });
-        if (!res.ok) throw new Error();
+        if (!res.ok) {
+          const errData = await res.json().catch(()=>({}));
+          throw new Error(errData.error || `HTTP ${res.status}`);
+        }
         showList();
         loadEvents();
       } catch (e) {
-        alert("Erro ao excluir");
+        alert("Erro ao excluir: " + (e.message || "Falha na conexão"));
       }
     }
   </script>
