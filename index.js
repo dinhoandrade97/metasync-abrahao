@@ -393,8 +393,8 @@ async function processWebhook(payload, client, inboxId) {
 
     // Atualizar custom attribute do contato com o link da agenda
     if (client.chatwootAccessToken && payload?.account?.id && sender?.id) {
-      const chatwootUrl = "https://chatwoot.agenciaabrahao.io";
-      const agendaUrl = `https://metasync.agenciaabrahao.io/calendar-widget.html?token=metasync_admin_secret_token&inboxId=${inboxId}`;
+      const chatwootUrl = "https://chatwoot.agenciaabrahao.com.br";
+      const agendaUrl = `https://metasync.agenciaabrahao.com.br/calendar-widget.html?token=metasync_admin_secret_token&inboxId=${inboxId}`;
       
       fetch(`${chatwootUrl}/api/v1/accounts/${payload.account.id}/contacts/${sender.id}`, {
         method: "PUT",
