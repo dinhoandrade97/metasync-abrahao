@@ -751,31 +751,7 @@ async function loadCalendarEvents() {
     return;
   }
   
-  if (!calendarInstance) {
-    container.innerHTML = '<div class="log-empty">Carregando eventos...</div>';
-  }
-
   try {
-    const res = await fetch(`/api/calendar/${activeInboxId}/events`, { headers: getAuthHeaders() });
-    if (!res.ok) {
-      if (res.status === 400) {
-        container.innerHTML = '<div class="log-empty" style="text-align:center; padding: 40px; color: var(--text-muted);">Este cliente não possui um Google Calendar ID configurado.</div>';
-      } else {
-        container.innerHTML = '<div class="log-empty" style="text-align:center; padding: 40px; color: var(--danger);">Erro ao carregar eventos da agenda.</div>';
-      }
-      if (calendarInstance) { calendarInstance.destroy(); calendarInstance = null; }
-      return;
-    }
-    const events = await res.json();
-    
-    const mappedEvents = events.map(ev => ({
-      id: ev.id,
-      title: ev.summary || 'Sem título',
-      start: ev.start.dateTime || ev.start.date,
-      end: ev.end.dateTime || ev.end.date,
-      extendedProps: { originalEvent: ev }
-    }));
-
     if (calendarInstance) {
       calendarInstance.destroy();
     }
@@ -795,7 +771,36 @@ async function loadCalendarEvents() {
         week: 'Semana',
         day: 'Dia'
       },
-      events: mappedEvents,
+      events: async function(info, successCallback, failureCallback) {
+        if (!activeInboxId) {
+          successCallback([]);
+          return;
+        }
+        try {
+          const start = info.start.toISOString();
+          const end = info.end.toISOString();
+          const res = await fetch(`/api/calendar/${activeInboxId}/events?from=${start}&to=${end}`, { headers: getAuthHeaders() });
+          
+          if (!res.ok) {
+            if (res.status === 400) {
+              container.innerHTML = '<div class="log-empty" style="text-align:center; padding: 40px; color: var(--text-muted);">Este cliente não possui um Google Calendar ID configurado.</div>';
+            }
+            throw new Error();
+          }
+          
+          const events = await res.json();
+          const mappedEvents = events.map(ev => ({
+            id: ev.id,
+            title: ev.summary || 'Sem título',
+            start: ev.start.dateTime || ev.start.date,
+            end: ev.end.dateTime || ev.end.date,
+            extendedProps: { originalEvent: ev }
+          }));
+          successCallback(mappedEvents);
+        } catch (e) {
+          failureCallback(e);
+        }
+      },
       eventClick: function(info) {
         openCalendarEventModal(info.event.extendedProps.originalEvent);
       },

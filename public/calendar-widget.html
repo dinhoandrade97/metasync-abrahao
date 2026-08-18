@@ -220,6 +220,33 @@
           week: 'Semana',
           day: 'Dia'
         },
+        events: async function(info, successCallback, failureCallback) {
+          if (!inboxId || !token) {
+            successCallback([]);
+            return;
+          }
+          document.getElementById("loading-overlay").classList.remove("hidden");
+          try {
+            const start = info.start.toISOString();
+            const end = info.end.toISOString();
+            const res = await fetch(`/api/calendar/${inboxId}/events?from=${start}&to=${end}`, { headers: getHeaders() });
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            
+            const mappedEvents = data.map(ev => ({
+              id: ev.id,
+              title: ev.summary || "(Sem título)",
+              start: ev.start.dateTime || ev.start.date,
+              end: ev.end.dateTime || ev.end.date,
+              extendedProps: { location: ev.location }
+            }));
+            successCallback(mappedEvents);
+          } catch (e) {
+            failureCallback(e);
+          } finally {
+            document.getElementById("loading-overlay").classList.add("hidden");
+          }
+        },
         dateClick: function(info) {
           if (!inboxId) {
             alert("Selecione um cliente primeiro.");
@@ -259,39 +286,8 @@
     }
 
     async function loadEvents() {
-      if (!inboxId || !token) return;
-      const loader = document.getElementById("loading-overlay");
-      
       if (!calendar) initCalendar();
-      
-      loader.classList.remove("hidden");
-      
-      try {
-        const res = await fetch(`/api/calendar/${inboxId}/events`, { headers: getHeaders() });
-        if (!res.ok) throw new Error();
-        const events = await res.json();
-        
-        calendar.removeAllEvents();
-        
-        events.forEach(ev => {
-          const start = ev.start.dateTime || ev.start.date;
-          const end = ev.end.dateTime || ev.end.date;
-          calendar.addEvent({
-            id: ev.id,
-            title: ev.summary || "Sem Título",
-            start: start,
-            end: end,
-            extendedProps: {
-              location: ev.location
-            },
-            color: 'var(--primary)'
-          });
-        });
-      } catch (e) {
-        alert("Erro ao carregar eventos.");
-      } finally {
-        loader.classList.add("hidden");
-      }
+      calendar.refetchEvents();
     }
 
     function showList() {
