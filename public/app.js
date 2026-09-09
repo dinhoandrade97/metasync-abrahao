@@ -628,6 +628,32 @@ async function loadAnalytics() {
     if (preset === "all") {
        daysToLoad = Object.keys(data).sort();
        subtitle.textContent = "Performance de todo o período trackeado";
+    } else if (preset === "this-month" || preset === "last-month") {
+       // Monta as datas por aritmética de string a partir do "hoje" em BRT,
+       // para não escorregar de mês por causa do fuso do navegador.
+       const hojeBrt = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+       const [anoHoje, mesHoje, diaHoje] = hojeBrt.split("-").map(Number);
+
+       let ano = anoHoje, mes = mesHoje;
+       if (preset === "last-month") {
+         mes -= 1;
+         if (mes === 0) { mes = 12; ano -= 1; }
+       }
+
+       const pad = n => String(n).padStart(2, "0");
+       // Dia 0 do mês seguinte = último dia do mês desejado.
+       const ultimoDiaDoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+       // No mês vigente para em hoje; não faz sentido plotar dias futuros.
+       const ultimoDia = preset === "this-month" ? diaHoje : ultimoDiaDoMes;
+
+       for (let dia = 1; dia <= ultimoDia; dia++) {
+         daysToLoad.push(`${ano}-${pad(mes)}-${pad(dia)}`);
+       }
+
+       const nomeMes = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][mes - 1];
+       subtitle.textContent = preset === "this-month"
+         ? `Performance de ${nomeMes} (do dia 1 até hoje)`
+         : `Performance de ${nomeMes} de ${ano}`;
     } else if (preset === "custom") {
        const start = document.getElementById("filter-start").value;
        const end = document.getElementById("filter-end").value;
