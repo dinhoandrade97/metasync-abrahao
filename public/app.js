@@ -89,6 +89,7 @@ function showPanel(name) {
   document.getElementById(`panel-${name}`).classList.add("active");
   document.getElementById(`nav-${name}`).classList.add("active");
   logPanel = name === "logs";
+  if (name === "analytics") loadAnalytics();
   if (logPanel) {
     logCount = 0;
     const badge = document.getElementById("log-badge");
@@ -137,7 +138,11 @@ function renderClientList() {
       select.innerHTML = `<option value="">Nenhum cliente cadastrado</option>`;
     } else {
       select.innerHTML = keys.map(id => `<option value="${id}">${clients[id].name || `Inbox ${id}`}</option>`).join("");
-      if (activeInboxId) select.value = activeInboxId;
+      // Sem placeholder o browser já exibe o primeiro cliente; então o
+      // activeInboxId precisa acompanhar o que está na tela, senão as
+      // estatísticas ficam zeradas mesmo com um cliente selecionado.
+      if (!activeInboxId) activeInboxId = keys[0];
+      select.value = activeInboxId;
     }
     
     const logSelect = document.getElementById("logs-client-select");
@@ -574,20 +579,39 @@ function applyPresetFilter() {
   }
 }
 
+let analyticsReqId = 0;
+
 async function loadAnalytics() {
-  if (!activeInboxId) {
+  // O select da aba já mostra um cliente mesmo quando activeInboxId ainda é
+  // nulo (abrir Estatísticas direto, sem passar por Clientes). Usa o valor
+  // visível como fonte da verdade para não renderizar tudo zerado.
+  const selectEl = document.getElementById("analytics-client-select");
+  const inboxId = activeInboxId || (selectEl && selectEl.value) || "";
+  if (inboxId) activeInboxId = inboxId;
+
+  const subtitleEl = document.getElementById("analytics-subtitle");
+
+  if (!inboxId) {
     document.getElementById("stat-total").textContent = "0";
     document.getElementById("stat-success-rate").textContent = "0%";
     document.getElementById("stat-revenue").textContent = "R$ 0,00";
-    if (myChart) myChart.destroy();
+    document.getElementById("stat-events-breakdown").innerHTML =
+      '<span style="color:var(--text-muted)">Nenhum</span>';
+    subtitleEl.textContent = "Selecione um cliente para ver as estatísticas";
+    if (myChart) { myChart.destroy(); myChart = null; }
     return;
   }
-  
+
+  const reqId = ++analyticsReqId;
+  subtitleEl.textContent = "Carregando estatísticas...";
+
   try {
-    const res = await fetch(`/api/analytics/${activeInboxId}`, { headers: getAuthHeaders() });
-    if (!res.ok) return;
+    const res = await fetch(`/api/analytics/${inboxId}`, { headers: getAuthHeaders() });
+    if (reqId !== analyticsReqId) return; // uma troca de filtro mais nova já assumiu
+    if (res.status === 401) return showLogin();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    
+
     const labels = [];
     const successes = [];
     const fails = [];
@@ -690,13 +714,23 @@ async function loadAnalytics() {
     renderChart(labels, successes, fails, dailyEvents);
   } catch (e) {
     console.error("Erro estatisticas", e);
+    if (reqId === analyticsReqId) {
+      subtitleEl.textContent = "Erro ao carregar estatísticas — clique em Atualizar";
+      toast("Erro ao carregar estatísticas", "err");
+    }
   }
 }
 
 function renderChart(labels, successes, fails, dailyEvents = []) {
+  // Chart.js vem de CDN: se ainda não carregou, os cards já estão preenchidos
+  // e o gráfico não pode derrubar o restante da tela.
+  if (typeof Chart === "undefined") {
+    console.warn("Chart.js ainda não carregou — gráfico ignorado");
+    return;
+  }
   const ctx = document.getElementById('eventsChart').getContext('2d');
   if (myChart) myChart.destroy();
-  
+
   myChart = new Chart(ctx, {
     type: 'bar',
     data: {
