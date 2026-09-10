@@ -87,9 +87,12 @@ function showPanel(name) {
   document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
   document.getElementById(`panel-${name}`).classList.add("active");
-  document.getElementById(`nav-${name}`).classList.add("active");
+  // Fechamentos é uma sub-tela de Estatísticas: não tem item próprio no menu.
+  const navAlvo = name === "deals" ? "analytics" : name;
+  document.getElementById(`nav-${navAlvo}`)?.classList.add("active");
   logPanel = name === "logs";
   if (name === "analytics") loadAnalytics();
+  if (name === "deals") loadDeals();
   if (logPanel) {
     logCount = 0;
     const badge = document.getElementById("log-badge");
@@ -580,6 +583,67 @@ function applyPresetFilter() {
 }
 
 let analyticsReqId = 0;
+let analyticsRange = null;
+
+/* ─── Fechamentos ────────────────────────────────────────────────────────────── */
+const moedaBR = v => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+
+async function loadDeals() {
+  const tbody = document.getElementById("deals-tbody");
+  const sub = document.getElementById("deals-subtitle");
+  const vazio = msg => `<tr><td colspan="4" style="padding:28px 18px; text-align:center; color:var(--text-muted);">${msg}</td></tr>`;
+
+  if (!activeInboxId) {
+    tbody.innerHTML = vazio("Selecione um cliente");
+    return;
+  }
+
+  tbody.innerHTML = vazio("Carregando...");
+  // O título do painel já diz "Fechamentos"; aqui só o período, sem repetir.
+  const brDate = iso => { const [a2, m, d2] = String(iso).split("-"); return `${d2}/${m}/${a2}`; };
+  sub.textContent = analyticsRange
+    ? (analyticsRange.start === analyticsRange.end
+        ? brDate(analyticsRange.start)
+        : `De ${brDate(analyticsRange.start)} a ${brDate(analyticsRange.end)}`)
+    : "Vendas registradas no período";
+
+  try {
+    const q = new URLSearchParams();
+    if (analyticsRange) { q.set("start", analyticsRange.start); q.set("end", analyticsRange.end); }
+    const res = await fetch(`/api/deals/${activeInboxId}?${q}`, { headers: getAuthHeaders() });
+    if (res.status === 401) return showLogin();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { total, quantidade, deals } = await res.json();
+
+    document.getElementById("deals-total").textContent = moedaBR(total);
+    document.getElementById("deals-count").textContent = quantidade;
+    document.getElementById("deals-avg").textContent = moedaBR(quantidade ? total / quantidade : 0);
+
+    if (!deals.length) {
+      tbody.innerHTML = vazio("Nenhum fechamento registrado neste período");
+      return;
+    }
+
+    tbody.innerHTML = deals.map(d => {
+      const [a, m, dia] = (d.date || "").split("-");
+      const semValor = !d.value;
+      return `<tr style="border-bottom:1px solid var(--border);">
+        <td style="padding:14px 18px; color:var(--text-muted); white-space:nowrap;">${dia}/${m}/${a}</td>
+        <td style="padding:14px 18px; font-weight:500;">${escapeHtml(d.title) || "—"}</td>
+        <td style="padding:14px 18px; color:var(--text-muted);">${escapeHtml(d.contact) || "—"}</td>
+        <td style="padding:14px 18px; text-align:right; font-weight:600; white-space:nowrap; color:${semValor ? "var(--text-muted)" : "#4ade80"};">${semValor ? "sem valor" : moedaBR(d.value)}</td>
+      </tr>`;
+    }).join("");
+  } catch (e) {
+    console.error("Erro fechamentos", e);
+    tbody.innerHTML = vazio("Erro ao carregar os fechamentos");
+  }
+}
+
+function escapeHtml(t) {
+  return String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 
 async function loadAnalytics() {
   // O select da aba já mostra um cliente mesmo quando activeInboxId ainda é
@@ -733,10 +797,20 @@ async function loadAnalytics() {
           { color: "#fbbf24", bg: "rgba(245,158,11,.15)", border: "rgba(245,158,11,.3)" }
         ];
         const theme = colors[idx % colors.length];
-        return `<span style="background:${theme.bg}; color:${theme.color}; border: 1px solid ${theme.border}; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; text-transform:capitalize;">${name}: ${count}</span>`;
+        // A etapa mapeada como Purchase abre o detalhamento dos fechamentos.
+        const ehFechamento = clients[activeInboxId]?.stageMap?.[name] === "Purchase";
+        const extra = ehFechamento
+          ? ` cursor:pointer; text-decoration:underline; text-underline-offset:3px;" onclick="showPanel('deals')" title="Ver detalhes dos fechamentos`
+          : "";
+        return `<span style="background:${theme.bg}; color:${theme.color}; border: 1px solid ${theme.border}; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; text-transform:capitalize;${extra}">${name}: ${count}</span>`;
       }).join("");
     }
     
+    // Guarda o período em uso para a tela de Fechamentos aplicar o mesmo recorte.
+    analyticsRange = daysToLoad.length
+      ? { start: daysToLoad[0], end: daysToLoad[daysToLoad.length - 1], label: subtitle.textContent }
+      : null;
+
     renderChart(labels, successes, fails, dailyEvents);
   } catch (e) {
     console.error("Erro estatisticas", e);

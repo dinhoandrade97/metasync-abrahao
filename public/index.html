@@ -250,6 +250,51 @@
       </div>
     </div>
 
+    <!-- ── PANEL: FECHAMENTOS ── -->
+    <div id="panel-deals" class="panel">
+      <div class="panel-header" style="flex-wrap: wrap; gap: 15px;">
+        <div>
+          <h1 class="panel-title">Fechamentos</h1>
+          <p class="panel-sub" id="deals-subtitle">Vendas registradas no período</p>
+        </div>
+        <div class="analytics-filters">
+          <button class="btn-secondary" onclick="showPanel('analytics')" style="display:flex; align-items:center; gap:6px;">
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            Voltar
+          </button>
+        </div>
+      </div>
+
+      <div class="stats-grid" style="margin-bottom:20px;">
+        <div class="stat-card">
+          <div class="stat-label">Total Fechado</div>
+          <div class="stat-value" id="deals-total">R$ 0,00</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Quantidade</div>
+          <div class="stat-value" id="deals-count">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Ticket Médio</div>
+          <div class="stat-value" id="deals-avg">R$ 0,00</div>
+        </div>
+      </div>
+
+      <div class="chart-container" style="padding:0; overflow-x:auto;">
+        <table id="deals-table" style="width:100%; border-collapse:collapse; font-size:14px; min-width:520px;">
+          <thead>
+            <tr style="text-align:left; color:var(--text-muted); font-size:12px; text-transform:uppercase; letter-spacing:.5px;">
+              <th style="padding:14px 18px; border-bottom:1px solid var(--border);">Data</th>
+              <th style="padding:14px 18px; border-bottom:1px solid var(--border);">Fechamento</th>
+              <th style="padding:14px 18px; border-bottom:1px solid var(--border);">Contato</th>
+              <th style="padding:14px 18px; border-bottom:1px solid var(--border); text-align:right;">Valor</th>
+            </tr>
+          </thead>
+          <tbody id="deals-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- ── PANEL: LOGS ── -->
     <div id="panel-logs" class="panel">
       <div class="panel-header" style="flex-wrap: wrap; gap: 15px;">
@@ -467,6 +512,6 @@
   <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
 </body>
 </html>
