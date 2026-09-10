@@ -669,6 +669,33 @@ app.get("/api/deals/:inboxId", authMiddleware, (req, res) => {
   res.json({ total, quantidade: lista.length, deals: lista });
 });
 
+// Importa fechamentos históricos vindos do CRM. Grava apenas o registro dos
+// cards — não toca no analytics, cujos totais já foram somados na época em que
+// os eventos ocorreram. Somar de novo aqui duplicaria o faturamento.
+app.post("/api/deals/:inboxId/import", authMiddleware, (req, res) => {
+  const { deals } = req.body || {};
+  if (!Array.isArray(deals)) return res.status(400).json({ error: "deals deve ser um array" });
+
+  const store = loadJSON(DEALS_FILE, {});
+  let novos = 0, atualizados = 0;
+  for (const d of deals) {
+    if (!d.taskId || !d.date) continue;
+    const chave = `${req.params.inboxId}:${d.taskId}`;
+    if (store[chave]) atualizados++; else novos++;
+    store[chave] = {
+      ...store[chave],
+      taskId: String(d.taskId),
+      value: Number(d.value) || 0,
+      date: d.date,
+      title: d.title || store[chave]?.title || "",
+      contact: d.contact || store[chave]?.contact || "",
+    };
+  }
+  saveJSON(DEALS_FILE, store);
+  log("info", req.params.inboxId, `Importação de fechamentos: ${novos} novos, ${atualizados} atualizados`);
+  res.json({ novos, atualizados, total: Object.keys(store).length });
+});
+
 // Ajuste manual de faturamento, sem disparar evento para nenhuma plataforma.
 // Informe o valor final do card; a rota aplica apenas a diferença.
 app.post("/api/analytics/:inboxId/adjust", authMiddleware, (req, res) => {

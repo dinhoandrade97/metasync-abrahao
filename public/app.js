@@ -87,9 +87,7 @@ function showPanel(name) {
   document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
   document.getElementById(`panel-${name}`).classList.add("active");
-  // Fechamentos é uma sub-tela de Estatísticas: não tem item próprio no menu.
-  const navAlvo = name === "deals" ? "analytics" : name;
-  document.getElementById(`nav-${navAlvo}`)?.classList.add("active");
+  document.getElementById(`nav-${name}`)?.classList.add("active");
   logPanel = name === "logs";
   if (name === "analytics") loadAnalytics();
   if (name === "deals") loadDeals();
@@ -605,7 +603,7 @@ async function loadDeals() {
     ? (analyticsRange.start === analyticsRange.end
         ? brDate(analyticsRange.start)
         : `De ${brDate(analyticsRange.start)} a ${brDate(analyticsRange.end)}`)
-    : "Vendas registradas no período";
+    : "Todos os fechamentos registrados";
 
   try {
     const q = new URLSearchParams();
@@ -615,9 +613,20 @@ async function loadDeals() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { total, quantidade, deals } = await res.json();
 
+    // O ticket médio considera só os fechamentos com valor preenchido: incluir
+    // os sem valor como zero afundaria a média e daria um número enganoso.
+    const comValor = deals.filter(d => d.value > 0).length;
+    const semValor = quantidade - comValor;
+
     document.getElementById("deals-total").textContent = moedaBR(total);
     document.getElementById("deals-count").textContent = quantidade;
-    document.getElementById("deals-avg").textContent = moedaBR(quantidade ? total / quantidade : 0);
+    document.getElementById("deals-avg").textContent = moedaBR(comValor ? total / comValor : 0);
+
+    const nota = document.getElementById("deals-note");
+    nota.textContent = semValor
+      ? `${semValor} de ${quantidade} sem valor preenchido — média calculada sobre os ${comValor} com valor`
+      : "";
+    nota.style.display = semValor ? "block" : "none";
 
     if (!deals.length) {
       tbody.innerHTML = vazio("Nenhum fechamento registrado neste período");
