@@ -106,6 +106,82 @@ function trackAnalytics(inboxId, success, value = 0, eventName = "Unknown") {
   saveJSON(ANALYTICS_FILE, analytics);
 }
 
+// ─── Valor de negócio já contabilizado ───────────────────────────────────────
+// O valor do card costuma ser digitado DEPOIS de arrastá-lo para a etapa de
+// fechamento, então o evento já saiu com valor zero. Guardamos quanto cada card
+// já somou ao faturamento para que uma edição posterior some apenas a
+// diferença — nunca o valor inteiro de novo, e nunca um evento novo.
+const DEALS_FILE = path.join(__dirname, "data", "deal-values.json");
+
+function registrarValorContabilizado(inboxId, taskId, valor, dateStr, info = {}) {
+  const deals = loadJSON(DEALS_FILE, {});
+  const chave = `${inboxId}:${taskId}`;
+  deals[chave] = {
+    ...deals[chave],
+    taskId: String(taskId),
+    value: valor,
+    date: dateStr,
+    title: info.title || deals[chave]?.title || "",
+    contact: info.contact || deals[chave]?.contact || "",
+  };
+  saveJSON(DEALS_FILE, deals);
+}
+
+// Ajusta o faturamento de um dia para refletir o valor final do card.
+// Idempotente: chamar duas vezes com o mesmo valor não soma duas vezes.
+function aplicarValorDoCard(inboxId, taskId, valorFinal, dateStr, info = {}) {
+  const deals = loadJSON(DEALS_FILE, {});
+  const chave = `${inboxId}:${taskId}`;
+  const anterior = deals[chave]?.value ?? 0;
+  // Corrige o dia em que o evento foi contabilizado, não o dia da edição.
+  const alvo = deals[chave]?.date || dateStr;
+  const delta = valorFinal - anterior;
+
+  if (delta === 0) return { alterado: false, motivo: "valor já contabilizado", data: alvo, valor: valorFinal };
+
+  const analytics = loadJSON(ANALYTICS_FILE, {});
+  if (!analytics[inboxId]?.[alvo]) return { alterado: false, erro: `sem registro de eventos em ${alvo}` };
+
+  analytics[inboxId][alvo].value = (analytics[inboxId][alvo].value || 0) + delta;
+  saveJSON(ANALYTICS_FILE, analytics);
+
+  deals[chave] = {
+    ...deals[chave],
+    taskId: String(taskId),
+    value: valorFinal,
+    date: alvo,
+    title: info.title || deals[chave]?.title || "",
+    contact: info.contact || deals[chave]?.contact || "",
+  };
+  saveJSON(DEALS_FILE, deals);
+
+  return { alterado: true, data: alvo, de: anterior, para: valorFinal, delta, totalDoDia: analytics[inboxId][alvo].value };
+}
+
+// ─── Purchase adiado ─────────────────────────────────────────────────────────
+// O valor do card é digitado alguns segundos DEPOIS de arrastá-lo para a etapa
+// de fechamento. Se disparássemos na hora, a Meta receberia R$ 0 e não haveria
+// como corrigir: reenviar criaria uma conversão duplicada. Então o Purchase
+// espera — e cada alteração de valor reinicia a espera. Um único evento sai,
+// já com o valor final.
+const PURCHASE_DELAY_MS = Number(process.env.PURCHASE_DELAY_MS || 90000);
+const purchasePendentes = new Map();
+
+function agendarPurchase(chave, ctx, enviar) {
+  const pendente = purchasePendentes.get(chave);
+  if (pendente) clearTimeout(pendente.timer);
+
+  const dados = { ...(pendente?.ctx || {}), ...ctx };
+  const timer = setTimeout(async () => {
+    purchasePendentes.delete(chave);
+    try { await enviar(dados); } catch (e) {
+      log("error", dados.inboxId, `Falha ao enviar Purchase adiado da Task ${dados.taskId}: ${e.message}`);
+    }
+  }, PURCHASE_DELAY_MS);
+
+  purchasePendentes.set(chave, { timer, ctx: dados });
+}
+
 // ─── Queue System ─────────────────────────────────────────────────────────────
 function enqueueJob(inboxId, platform, endpoint, payload, accessToken = "") {
   const queue = loadJSON(QUEUE_FILE, []);
@@ -168,7 +244,7 @@ function hashCity(city) {
 
 // ─── Build Meta CAPI payload ──────────────────────────────────────────────────
 // ─── Build Meta CAPI payload ──────────────────────────────────────────────────
-function buildEvent(eventName, { eventId, conversationId, contact, dealValue, stageName }) {
+function buildEvent(eventName, { eventId, conversationId, contact, dealValue, stageName, eventTime }) {
   const { fn, ln } = hashName(contact.name);
   const hashedPhone = hashPhone(contact.phone_number);
   const hashedEmail = sha256(contact.email);
@@ -186,7 +262,7 @@ function buildEvent(eventName, { eventId, conversationId, contact, dealValue, st
 
   const event = {
     event_name:    eventName,
-    event_time:    Math.floor(Date.now() / 1000),
+    event_time:    eventTime || Math.floor(Date.now() / 1000),
     action_source: "crm",
     event_id:      eventId,
     user_data,
@@ -339,6 +415,44 @@ async function processQueue() {
 }
 setInterval(processQueue, 60000); // Roda a cada 1 minuto
 
+// Envia o fechamento depois que a janela de espera fecha, já com o valor final.
+async function enviarPurchasePendente(d) {
+  const client = loadClients()[d.inboxId];
+  if (!client) return;
+
+  const valueStr = d.dealValue ? ` | R$ ${d.dealValue}` : " | SEM VALOR";
+  log("info", d.inboxId, `Enviando fechamento da Task ${d.taskId}${valueStr}`, { taskId: d.taskId, convId: d.convId });
+
+  const eventData = buildEvent("Purchase", {
+    eventId: d.eventId,
+    conversationId: d.convId,
+    contact: d.contact || {},
+    dealValue: d.dealValue,
+    stageName: d.stageName,
+    eventTime: d.eventTime,
+  });
+
+  await Promise.allSettled([
+    sendToMeta(client.pixelId, client.accessToken, eventData, d.convId, d.inboxId),
+    sendToTikTok(client.tiktokPixelId, client.tiktokAccessToken, eventData, d.convId, d.inboxId),
+    sendToGA4(client.ga4MeasurementId, client.ga4ApiSecret, eventData, d.convId, d.inboxId),
+  ]);
+
+  // Registra o valor já contabilizado, para que uma edição posterior do card
+  // some apenas a diferença no painel.
+  registrarValorContabilizado(d.inboxId, d.taskId, d.dealValue, getBrtDateStr(), {
+    title: d.title,
+    contact: d.contact?.name,
+  });
+
+  if (!d.dealValue) {
+    log("warn", d.inboxId, `Task ${d.taskId} fechada sem valor. Preencher o card agora corrige o painel, mas não a Meta.`);
+  }
+}
+
+// Se o processo for encerrado com fechamentos na janela, envia antes de sair.
+process.on("SIGTERM", () => { for (const [, p] of purchasePendentes) { clearTimeout(p.timer); enviarPurchasePendente(p.ctx); } });
+
 // ─── Process webhook payload ──────────────────────────────────────────────────
 const recentEvents = new Set();
 
@@ -420,6 +534,40 @@ async function processWebhook(payload, client, inboxId) {
   // ── kanban_task_updated → etapa mapeada ─────────────────────────────────────
   if (eventType === "kanban_task_updated") {
     if (!payload?.changed_attributes?.board_step) {
+      // Sem mudança de etapa o evento já foi enviado. Se o que mudou foi o
+      // valor, apenas acertamos o faturamento — nada é disparado de novo.
+      if (payload?.changed_attributes?.value) {
+        const stageAtual = payload?.board_step?.name;
+        if (client.stageMap?.[stageAtual] === "Purchase") {
+          const novoValor = parseFloat(payload.value) || 0;
+          const chavePend = `${inboxId}:${payload.id}`;
+
+          // Ainda dentro da janela: o evento não saiu, então só atualizamos o
+          // valor e reiniciamos a contagem. Continua sendo um único envio.
+          if (purchasePendentes.has(chavePend)) {
+            agendarPurchase(chavePend, {
+              dealValue: novoValor,
+              title: payload.title,
+              contact: payload?.contacts?.[0] ?? {},
+            }, enviarPurchasePendente);
+            log("info", inboxId, `Valor da Task ${payload.id} atualizado para R$ ${novoValor} antes do envio — aguardando`);
+            return;
+          }
+
+          // Fora da janela o evento já foi para as plataformas; aqui só o
+          // painel é corrigido, sem reenvio.
+          const r = aplicarValorDoCard(inboxId, payload.id, novoValor, getBrtDateStr(), {
+            title: payload.title,
+            contact: payload?.contacts?.[0]?.name,
+          });
+          if (r.alterado) {
+            log("success", inboxId, `Faturamento ajustado | Task ${payload.id} | ${r.data} | R$ ${r.de} → R$ ${r.para} | sem novo evento`);
+          } else if (r.erro) {
+            log("warn", inboxId, `Não foi possível ajustar o valor da Task ${payload.id}: ${r.erro}`);
+          }
+          return;
+        }
+      }
       log("info", inboxId, `kanban_task_updated sem mudança de etapa — ignorado (Task ${payload.id})`);
       return;
     }
@@ -450,14 +598,28 @@ async function processWebhook(payload, client, inboxId) {
 
     // Usa taskId e nome da etapa no eventId para garantir idempotência caso venham duplicados
     const eventId = `metasync_task_${taskId}_stage_${sha256(stageName).slice(0, 8)}`;
+
+    // Fechamento espera a janela antes de sair, para pegar o valor digitado
+    // logo depois de arrastar o card. Um envio só, com o valor final.
+    if (metaEvent === "Purchase") {
+      agendarPurchase(`${inboxId}:${taskId}`, {
+        inboxId, taskId, convId, eventId, stageName, metaEvent,
+        contact, dealValue: parseFloat(dealValue) || 0, title: payload.title,
+        eventTime: Math.floor(Date.now() / 1000), // horário real da conversão
+      }, enviarPurchasePendente);
+      log("info", inboxId, `Fechamento da Task ${taskId} aguardando ${PURCHASE_DELAY_MS / 1000}s para capturar o valor`);
+      return;
+    }
+
     const eventData = buildEvent(metaEvent, { eventId, conversationId: convId, contact, dealValue, stageName });
-    
+
     // Dispara para todas as plataformas configuradas em paralelo
     await Promise.allSettled([
       sendToMeta(client.pixelId, client.accessToken, eventData, convId, inboxId),
       sendToTikTok(client.tiktokPixelId, client.tiktokAccessToken, eventData, convId, inboxId),
       sendToGA4(client.ga4MeasurementId, client.ga4ApiSecret, eventData, convId, inboxId)
     ]);
+
     return;
   }
 
@@ -491,6 +653,33 @@ app.get("/health", (_req, res) => {
 app.get("/api/analytics/:inboxId", authMiddleware, (req, res) => {
   const analytics = loadJSON(ANALYTICS_FILE, {});
   res.json(analytics[req.params.inboxId] || {});
+});
+
+// Lista os fechamentos registrados, do mais recente para o mais antigo.
+app.get("/api/deals/:inboxId", authMiddleware, (req, res) => {
+  const { inboxId } = req.params;
+  const { start, end } = req.query;
+  const deals = loadJSON(DEALS_FILE, {});
+  const lista = Object.entries(deals)
+    .filter(([chave]) => chave.startsWith(`${inboxId}:`))
+    .map(([, d]) => d)
+    .filter(d => (!start || d.date >= start) && (!end || d.date <= end))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const total = lista.reduce((s, d) => s + (d.value || 0), 0);
+  res.json({ total, quantidade: lista.length, deals: lista });
+});
+
+// Ajuste manual de faturamento, sem disparar evento para nenhuma plataforma.
+// Informe o valor final do card; a rota aplica apenas a diferença.
+app.post("/api/analytics/:inboxId/adjust", authMiddleware, (req, res) => {
+  const { taskId, value, date } = req.body || {};
+  if (taskId === undefined || value === undefined) {
+    return res.status(400).json({ error: "taskId e value são obrigatórios" });
+  }
+  const r = aplicarValorDoCard(req.params.inboxId, String(taskId), parseFloat(value) || 0, date || getBrtDateStr());
+  if (r.erro) return res.status(409).json(r);
+  if (r.alterado) log("success", req.params.inboxId, `Faturamento ajustado manualmente | Task ${taskId} | ${r.data} | R$ ${r.de} → R$ ${r.para}`);
+  res.json(r);
 });
 
 // ── Auth Middleware & Login ───────────────────────────────────────────────────
