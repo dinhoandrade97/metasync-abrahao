@@ -262,6 +262,22 @@
           <p class="panel-sub" id="deals-subtitle">Vendas registradas no período</p>
         </div>
         <div class="analytics-filters">
+          <select id="deals-preset" onchange="applyDealsFilter()" class="select-filter">
+            <option value="1">Hoje</option>
+            <option value="yesterday">Ontem</option>
+            <option value="7">Últimos 7 dias</option>
+            <option value="15">Últimos 15 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="this-month">Este mês</option>
+            <option value="last-month">Mês passado</option>
+            <option value="all" selected>Todo o período</option>
+            <option value="custom">Personalizado</option>
+          </select>
+          <div id="deals-custom-dates" style="display:none; gap:8px; align-items:center;">
+            <input type="date" id="deals-start" class="select-filter" onchange="loadDeals()" />
+            <span style="color:var(--text-muted); font-size:13px;">até</span>
+            <input type="date" id="deals-end" class="select-filter" onchange="loadDeals()" />
+          </div>
           <button class="btn-secondary" onclick="showPanel('analytics')" style="display:flex; align-items:center; gap:6px;">
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             Voltar
@@ -518,6 +534,6 @@
   <!-- TOAST -->
   <div class="toast" id="toast"></div>
 
-  <script src="app.js?v=13"></script>
+  <script src="app.js?v=15"></script>
 </body>
 </html>

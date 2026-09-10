@@ -91,6 +91,20 @@ function showPanel(name) {
   logPanel = name === "logs";
   if (name === "analytics") loadAnalytics();
   if (name === "deals") loadDeals();
+}
+
+// Chegando pelo badge "Fecharam", a aba abre no mesmo período das Estatísticas.
+function abrirFechamentos() {
+  const presetAtual = document.getElementById("filter-preset").value;
+  document.getElementById("deals-preset").value = presetAtual;
+  if (presetAtual === "custom") {
+    document.getElementById("deals-start").value = document.getElementById("filter-start").value;
+    document.getElementById("deals-end").value = document.getElementById("filter-end").value;
+    document.getElementById("deals-custom-dates").style.display = "flex";
+  } else {
+    document.getElementById("deals-custom-dates").style.display = "none";
+  }
+  showPanel("deals");
   if (logPanel) {
     logCount = 0;
     const badge = document.getElementById("log-badge");
@@ -584,9 +598,60 @@ let analyticsReqId = 0;
 let analyticsRange = null;
 
 /* ─── Fechamentos ────────────────────────────────────────────────────────────── */
+// Converte um preset de filtro em intervalo de datas. Mesmas regras usadas nas
+// Estatísticas, incluindo o cuidado com o fuso: as datas saem de "hoje" em
+// America/Sao_Paulo, não do fuso do navegador.
+function periodoDoFiltro(preset, startCustom, endCustom) {
+  const fmt = d => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const pad = n => String(n).padStart(2, "0");
+  const hoje = fmt(new Date());
+  const menosDias = n => { const d = new Date(); d.setDate(d.getDate() - n); return fmt(d); };
+  const br = iso => String(iso).split("-").reverse().join("/");
+
+  if (preset === "all") return { start: null, end: null, label: "Todos os fechamentos registrados" };
+
+  if (preset === "custom") {
+    if (!startCustom || !endCustom) return { start: null, end: null, label: "Selecione as duas datas" };
+    return { start: startCustom, end: endCustom, label: `De ${br(startCustom)} a ${br(endCustom)}` };
+  }
+
+  if (preset === "this-month" || preset === "last-month") {
+    const [anoHoje, mesHoje, diaHoje] = hoje.split("-").map(Number);
+    let ano = anoHoje, mes = mesHoje;
+    if (preset === "last-month") { mes -= 1; if (mes === 0) { mes = 12; ano -= 1; } }
+    const ultimoDoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+    const fim = preset === "this-month" ? diaHoje : ultimoDoMes;
+    const nomeMes = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"][mes - 1];
+    return {
+      start: `${ano}-${pad(mes)}-01`,
+      end: `${ano}-${pad(mes)}-${pad(fim)}`,
+      label: preset === "this-month" ? `${nomeMes} (do dia 1 até hoje)` : `${nomeMes} de ${ano}`,
+    };
+  }
+
+  if (preset === "yesterday") { const d = menosDias(1); return { start: d, end: d, label: `Ontem — ${br(d)}` }; }
+  if (preset === "1") return { start: hoje, end: hoje, label: `Hoje — ${br(hoje)}` };
+
+  const n = parseInt(preset, 10) || 7;
+  const ini = menosDias(n - 1);
+  return { start: ini, end: hoje, label: `Últimos ${n} dias — de ${br(ini)} a ${br(hoje)}` };
+}
+
+function applyDealsFilter() {
+  const ehCustom = document.getElementById("deals-preset").value === "custom";
+  document.getElementById("deals-custom-dates").style.display = ehCustom ? "flex" : "none";
+  if (!ehCustom) loadDeals();
+}
+
 const moedaBR = v => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
 
+let dealsReqId = 0;
+
 async function loadDeals() {
+  // Trocar de filtro rápido dispara requisições concorrentes; sem esta guarda
+  // uma resposta antiga pode chegar depois e sobrescrever a tela com os
+  // números do período errado.
+  const reqId = ++dealsReqId;
   const tbody = document.getElementById("deals-tbody");
   const sub = document.getElementById("deals-subtitle");
   const vazio = msg => `<tr><td colspan="4" style="padding:28px 18px; text-align:center; color:var(--text-muted);">${msg}</td></tr>`;
@@ -597,18 +662,20 @@ async function loadDeals() {
   }
 
   tbody.innerHTML = vazio("Carregando...");
-  // O título do painel já diz "Fechamentos"; aqui só o período, sem repetir.
-  const brDate = iso => { const [a2, m, d2] = String(iso).split("-"); return `${d2}/${m}/${a2}`; };
-  sub.textContent = analyticsRange
-    ? (analyticsRange.start === analyticsRange.end
-        ? brDate(analyticsRange.start)
-        : `De ${brDate(analyticsRange.start)} a ${brDate(analyticsRange.end)}`)
-    : "Todos os fechamentos registrados";
+
+  const periodo = periodoDoFiltro(
+    document.getElementById("deals-preset").value,
+    document.getElementById("deals-start").value,
+    document.getElementById("deals-end").value
+  );
+  sub.textContent = periodo.label;
 
   try {
     const q = new URLSearchParams();
-    if (analyticsRange) { q.set("start", analyticsRange.start); q.set("end", analyticsRange.end); }
+    if (periodo.start) q.set("start", periodo.start);
+    if (periodo.end) q.set("end", periodo.end);
     const res = await fetch(`/api/deals/${activeInboxId}?${q}`, { headers: getAuthHeaders() });
+    if (reqId !== dealsReqId) return; // um filtro mais novo já assumiu
     if (res.status === 401) return showLogin();
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { total, quantidade, deals } = await res.json();
@@ -645,7 +712,7 @@ async function loadDeals() {
     }).join("");
   } catch (e) {
     console.error("Erro fechamentos", e);
-    tbody.innerHTML = vazio("Erro ao carregar os fechamentos");
+    if (reqId === dealsReqId) tbody.innerHTML = vazio("Erro ao carregar os fechamentos");
   }
 }
 
@@ -809,7 +876,7 @@ async function loadAnalytics() {
         // A etapa mapeada como Purchase abre o detalhamento dos fechamentos.
         const ehFechamento = clients[activeInboxId]?.stageMap?.[name] === "Purchase";
         const extra = ehFechamento
-          ? ` cursor:pointer; text-decoration:underline; text-underline-offset:3px;" onclick="showPanel('deals')" title="Ver detalhes dos fechamentos`
+          ? ` cursor:pointer; text-decoration:underline; text-underline-offset:3px;" onclick="abrirFechamentos()" title="Ver detalhes dos fechamentos`
           : "";
         return `<span style="background:${theme.bg}; color:${theme.color}; border: 1px solid ${theme.border}; padding:2px 8px; border-radius:12px; font-size:12px; font-weight:600; text-transform:capitalize;${extra}">${name}: ${count}</span>`;
       }).join("");
