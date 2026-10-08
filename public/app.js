@@ -70,6 +70,7 @@ const META_EVENTS = [
   "InitiateCheckout", "AddPaymentInfo", "CompleteRegistration", 
   "Contact", "SubmitApplication", "Subscribe", "Search"
 ];
+const CUSTOM_EVENT_RE = /^[A-Za-z][A-Za-z0-9_]{0,49}$/;
 
 /* ─── Init ───────────────────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", () => {
@@ -272,15 +273,24 @@ function addStageRow(stage = "", selectedEvent = "") {
   const row   = document.createElement("div");
   row.className = "stage-row";
 
+  // Qualquer nome fora da lista padrão é um evento personalizado.
+  const isCustom = !!selectedEvent && !META_EVENTS.includes(selectedEvent);
+
   const eventsHTML = META_EVENTS.map(ev => `
     <span class="event-tag ${ev} ${ev === selectedEvent ? "selected" : ""}"
           onclick="selectEvent(this, '${ev}', event)">${ev}</span>
-  `).join("");
+  `).join("") + `
+    <span class="event-tag custom ${isCustom ? "selected" : ""}"
+          onclick="selectEvent(this, 'custom', event)">+ Personalizado</span>
+  `;
 
   row.innerHTML = `
     <input type="text" placeholder="Nome da etapa no Kanban" value="${stage}" class="stage-name" />
     <div>
       <div class="meta-event-select">${eventsHTML}</div>
+      <div class="custom-event-opt ${isCustom ? 'show' : ''}">
+        <input type="text" class="custom-event-name" maxlength="50" placeholder="Nome do evento, ex: QualifiedLead" />
+      </div>
       <div class="purchase-value-opt ${selectedEvent === 'Purchase' ? 'show' : ''}">
         <input type="checkbox" id="chk-${Date.now()}" checked />
         <label>Usar valor do card</label>
@@ -291,6 +301,7 @@ function addStageRow(stage = "", selectedEvent = "") {
     </button>
   `;
 
+  if (isCustom) row.querySelector(".custom-event-name").value = selectedEvent;
   el.appendChild(row);
 }
 
@@ -301,6 +312,11 @@ function selectEvent(el, eventName, e) {
   el.classList.add("selected");
   const opt = row.querySelector(".purchase-value-opt");
   if (opt) opt.classList.toggle("show", eventName === "Purchase");
+  const custom = row.querySelector(".custom-event-opt");
+  if (custom) {
+    custom.classList.toggle("show", eventName === "custom");
+    if (eventName === "custom") custom.querySelector("input").focus();
+  }
 }
 
 /* ─── Collect stage map ──────────────────────────────────────────────────────── */
@@ -308,8 +324,17 @@ function collectStageMap() {
   const map = {};
   document.querySelectorAll(".stage-row").forEach(row => {
     const stage = row.querySelector(".stage-name")?.value?.trim();
-    const event = row.querySelector(".event-tag.selected")?.textContent?.trim();
-    if (stage && event) map[stage] = event;
+    const tag   = row.querySelector(".event-tag.selected");
+    if (!stage || !tag) return;
+
+    let event = tag.textContent.trim();
+    if (tag.classList.contains("custom")) {
+      event = row.querySelector(".custom-event-name").value.trim();
+      if (!CUSTOM_EVENT_RE.test(event)) {
+        throw new Error(`Evento personalizado inválido na etapa "${stage}". Use até 50 letras, números ou "_", começando por letra (ex: QualifiedLead).`);
+      }
+    }
+    map[stage] = event;
   });
   return map;
 }
@@ -335,7 +360,8 @@ async function saveClient() {
     toast("Preencha Inbox ID, Pixel ID e Access Token", "err"); return;
   }
 
-  const stageMap = collectStageMap();
+  let stageMap;
+  try { stageMap = collectStageMap(); } catch (e) { toast(e.message, "err"); return; }
 
   try {
     const res = await fetch("/api/clients", {

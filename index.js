@@ -814,6 +814,10 @@ app.post("/api/clients", authMiddleware, (req, res) => {
   if (!inboxId || !pixelId || !accessToken) {
     return res.status(400).json({ error: "inboxId, pixelId e accessToken são obrigatórios" });
   }
+  const invalido = Object.values(stageMap || {}).find(ev => !/^[A-Za-z][A-Za-z0-9_]{0,49}$/.test(String(ev)));
+  if (invalido !== undefined) {
+    return res.status(400).json({ error: `Nome de evento inválido: "${invalido}"` });
+  }
   const clients = loadClients();
   clients[String(inboxId)] = { 
     name: name || `Cliente ${inboxId}`, 

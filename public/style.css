@@ -296,6 +296,13 @@ input::placeholder { color: var(--text-muted); }
 .event-tag.selected.Subscribe            { background: #e11d48; color: #fff; border-color: #e11d48; }
 .event-tag.selected.Search               { background: #94a3b8; color: #fff; border-color: #94a3b8; }
 
+.event-tag.custom { border-style: dashed; }
+.event-tag.custom.selected { background: #a855f7; color: #fff; border-color: #a855f7; border-style: solid; }
+
+.custom-event-opt { display: none; margin-top: 8px; }
+.custom-event-opt.show { display: block; }
+.custom-event-opt input[type="text"] { margin: 0; max-width: 320px; }
+
 .purchase-value-opt {
   display: none; align-items: center; gap: 5px;
   font-size: 11px; color: var(--text-muted);
