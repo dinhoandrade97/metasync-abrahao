@@ -161,6 +161,12 @@ function renderClientList() {
       select.value = activeInboxId;
     }
     
+    const dealsSelect = document.getElementById("deals-client-select");
+    if (dealsSelect) {
+      dealsSelect.innerHTML = keys.map(id => `<option value="${id}">${clients[id].name || `Inbox ${id}`}</option>`).join("");
+      dealsSelect.value = activeInboxId;
+    }
+
     const logSelect = document.getElementById("logs-client-select");
     if (logSelect) {
       const prevVal = logSelect.value;
@@ -176,6 +182,15 @@ function changeAnalyticsClient() {
     activeInboxId = val;
     renderClientList(); // Atualiza a cor no sidebar esquerdo
     loadAnalytics();
+  }
+}
+
+function changeDealsClient() {
+  const val = document.getElementById("deals-client-select").value;
+  if (val) {
+    activeInboxId = val;
+    renderClientList(); // mantém sidebar e demais abas no mesmo cliente
+    loadDeals();
   }
 }
 

@@ -262,6 +262,9 @@
           <p class="panel-sub" id="deals-subtitle">Vendas registradas no período</p>
         </div>
         <div class="analytics-filters">
+          <select id="deals-client-select" onchange="changeDealsClient()" class="select-filter" style="font-weight: 600; color: var(--blue); margin-right: 15px;">
+            <option value="">Selecione um cliente...</option>
+          </select>
           <select id="deals-preset" onchange="applyDealsFilter()" class="select-filter">
             <option value="1">Hoje</option>
             <option value="yesterday">Ontem</option>
