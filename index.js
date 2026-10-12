@@ -503,6 +503,48 @@ async function enviarPurchasePendente(d) {
 // Se o processo for encerrado com fechamentos na janela, envia antes de sair.
 process.on("SIGTERM", () => { for (const [, p] of purchasePendentes) { clearTimeout(p.timer); enviarPurchasePendente(p.ctx); } });
 
+// ─── Inbox do card do Kanban ──────────────────────────────────────────────────
+// O webhook do Kanban chega a todos os clientes da mesma conta do Chatwoot e o card
+// não traz o inbox. Resolvemos o inbox pela conversa do card para que cada cliente
+// processe apenas os próprios cards.
+const CHATWOOT_URL = process.env.CHATWOOT_URL || "https://chatwoot.agenciaabrahao.com.br";
+const cardInboxCache = new Map();
+const CARD_INBOX_TTL_MS = 10 * 60 * 1000;
+
+// <resolveKanbanInbox>
+async function resolveKanbanInbox(payload, client) {
+  const direct = payload.inbox_id ?? payload.conversation?.inbox_id ?? payload.conversations?.[0]?.inbox_id;
+  if (direct != null) return String(direct);
+
+  const convId = payload.conversation_ids?.[0] ?? payload.conversations?.[0]?.id;
+  if (!convId) return null;
+  const accountId = payload.account?.id ?? payload.account_id ?? process.env.CHATWOOT_ACCOUNT_ID ?? 1;
+
+  const key = `${accountId}:${convId}`;
+  const hit = cardInboxCache.get(key);
+  if (hit && Date.now() - hit.ts < CARD_INBOX_TTL_MS) return hit.inbox;
+
+  // A conta do Chatwoot é a mesma para todos; qualquer token cadastrado serve.
+  const token = client.chatwootAccessToken
+    || Object.values(loadClients()).map(c => c.chatwootAccessToken).find(Boolean);
+  if (!token) return null;
+
+  try {
+    const r = await fetch(`${CHATWOOT_URL}/api/v1/accounts/${accountId}/conversations/${convId}`, {
+      headers: { api_access_token: token },
+    });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const inbox = j.inbox_id ?? j.meta?.inbox_id;
+    if (inbox == null) return null;
+    cardInboxCache.set(key, { inbox: String(inbox), ts: Date.now() });
+    return String(inbox);
+  } catch {
+    return null;
+  }
+}
+// </resolveKanbanInbox>
+
 // ─── Process webhook payload ──────────────────────────────────────────────────
 const recentEvents = new Set();
 
@@ -583,6 +625,16 @@ async function processWebhook(payload, client, inboxId) {
 
   // ── kanban_task_updated → etapa mapeada ─────────────────────────────────────
   if (eventType === "kanban_task_updated") {
+    // O mesmo card chega a todos os clientes: só processa se for deste inbox.
+    const cardInbox = await resolveKanbanInbox(payload, client);
+    if (cardInbox && cardInbox !== String(inboxId)) {
+      log("info", inboxId, `Card ${payload.id} pertence ao inbox ${cardInbox} — ignorado neste cliente`);
+      return;
+    }
+    if (!cardInbox) {
+      log("warn", inboxId, `Card ${payload.id}: não foi possível confirmar o inbox — processado sem verificação`);
+    }
+
     if (!payload?.changed_attributes?.board_step) {
       // Sem mudança de etapa o evento já foi enviado. Se o que mudou foi o
       // valor, apenas acertamos o faturamento — nada é disparado de novo.
@@ -638,8 +690,11 @@ async function processWebhook(payload, client, inboxId) {
 
     // Prevenção contra disparo duplo (conversation_created já mandou o evento da etapa inicial)
     const initialStageName = Object.keys(client.stageMap || {})[0];
-    if (!from && stageName === initialStageName) {
-      log("info", inboxId, `Ignorado: Tarefa recém-criada na etapa "${stageName}". O evento já foi enviado na abertura da conversa.`);
+    // Também vale para o card que volta à etapa inicial: o Lead já saiu quando a conversa
+    // nasceu, e reenviar contaria a mesma pessoa de novo.
+    if (stageName === initialStageName) {
+      const motivo = from ? `Card voltou para a etapa "${stageName}"` : `Tarefa recém-criada na etapa "${stageName}"`;
+      log("info", inboxId, `Ignorado: ${motivo}. O Lead já foi enviado na abertura da conversa.`);
       return;
     }
 
