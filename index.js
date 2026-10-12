@@ -13,7 +13,7 @@ const DATA_FILE      = path.join(__dirname, "data", "clients.json");
 const QUEUE_FILE     = path.join(__dirname, "data", "queue.json");
 const ANALYTICS_FILE = path.join(__dirname, "data", "analytics.json");
 const LOGS_DIR       = path.join(__dirname, "data", "logs");
-const META_CAPI_BASE = "https://graph.facebook.com/v19.0";
+const META_CAPI_BASE = "https://graph.facebook.com/v26.0";
 
 // ─── SSE clients for real-time logs ───────────────────────────────────────────
 const sseClients = new Set();
@@ -242,7 +242,45 @@ function hashCity(city) {
   return sha256(String(city).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
 }
 
-// ─── Build Meta CAPI payload ──────────────────────────────────────────────────
+// ─── Lead ID (Formulário Instantâneo → Leads Qualificados) ────────────────────
+// O formulário da Meta gera um lead_id; o contato chega depois pelo WhatsApp/Chatwoot.
+// Guardamos lead_id por telefone/e-mail (hash) para anexá-lo aos eventos do mesmo contato.
+const LEADS_FILE = path.join(__dirname, "data", "leads.json");
+const LEADS_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+
+// DDD + últimos 8 dígitos: ignora +55 e o nono dígito, que variam entre formulário e WhatsApp.
+function phoneKey(phone) {
+  let d = String(phone || "").replace(/\D/g, "");
+  if (d.startsWith("55") && d.length >= 12) d = d.slice(2);
+  if (d.length < 10) return null;
+  return "p:" + d.slice(0, 2) + d.slice(-8);
+}
+const emailKey = e => (e && String(e).includes("@")) ? "e:" + String(e).trim().toLowerCase() : null;
+
+function rememberLead(leadId, { phone, email } = {}) {
+  const id = String(leadId || "").trim();
+  if (!/^\d{15,17}$/.test(id)) return false;
+  const keys = [phoneKey(phone), emailKey(email)].filter(Boolean).map(k => sha256(k));
+  if (keys.length === 0) return false;
+  const store = loadJSON(LEADS_FILE, {});
+  const now = Date.now();
+  for (const k of Object.keys(store)) if (now - store[k].ts > LEADS_TTL_MS) delete store[k];
+  for (const k of keys) store[k] = { lead_id: id, ts: now };
+  saveJSON(LEADS_FILE, store);
+  return true;
+}
+
+function lookupLeadId(contact) {
+  const keys = [phoneKey(contact.phone_number), emailKey(contact.email)].filter(Boolean).map(k => sha256(k));
+  if (keys.length === 0) return null;
+  const store = loadJSON(LEADS_FILE, {});
+  for (const k of keys) {
+    const hit = store[k];
+    if (hit && Date.now() - hit.ts <= LEADS_TTL_MS) return hit.lead_id;
+  }
+  return null;
+}
+
 // ─── Build Meta CAPI payload ──────────────────────────────────────────────────
 function buildEvent(eventName, { eventId, conversationId, contact, dealValue, stageName, eventTime }) {
   const { fn, ln } = hashName(contact.name);
@@ -260,15 +298,27 @@ function buildEvent(eventName, { eventId, conversationId, contact, dealValue, st
   if (state)       user_data.st = [sha256(String(state).toLowerCase().slice(0, 2))];
   if (contact.id)  user_data.external_id = [sha256(String(contact.id))];
 
+  // Identificadores de lead/clique, quando o contato os trouxer (campos opcionais).
+  // lead_id inválido faz a Meta rejeitar o evento, então só vai se tiver 15-17 dígitos.
+  const attrs = { ...(contact.custom_attributes || {}), ...(contact.additional_attributes || {}) };
+  const leadId = String(attrs.lead_id ?? attrs.meta_lead_id ?? lookupLeadId(contact) ?? "").trim();
+  if (/^\d{15,17}$/.test(leadId)) user_data.lead_id = Number(leadId);
+  if (attrs.fbc) user_data.fbc = String(attrs.fbc);
+  if (attrs.fbp) user_data.fbp = String(attrs.fbp);
+
+  // Padrão exigido pela integração de CRM da Meta (Leads Qualificados):
+  // action_source "system_generated" + custom_data.event_source "crm" + lead_event_source.
   const event = {
     event_name:    eventName,
     event_time:    eventTime || Math.floor(Date.now() / 1000),
-    action_source: "crm",
+    action_source: "system_generated",
     event_id:      eventId,
     user_data,
     custom_data: {
-      lead_source: "chatwoot_metasync",
-      kanban_stage: stageName || "Novo Lead"
+      event_source:      "crm",
+      lead_event_source: "MetaSync",
+      lead_source:       "chatwoot_metasync",
+      kanban_stage:      stageName || "Novo Lead"
     }
   };
 
@@ -508,7 +558,7 @@ async function processWebhook(payload, client, inboxId) {
     // Atualizar custom attribute do contato com o link da agenda
     if (client.chatwootAccessToken && payload?.account?.id && sender?.id) {
       const chatwootUrl = "https://chatwoot.agenciaabrahao.com.br";
-      const agendaUrl = `https://metasync.agenciaabrahao.com.br/calendar-widget.html?token=metasync_admin_secret_token&inboxId=${inboxId}`;
+      const agendaUrl = `https://metasync.agenciaabrahao.com.br/calendar-widget.html?token=${ADMIN_TOKEN}&inboxId=${inboxId}`;
       
       fetch(`${chatwootUrl}/api/v1/accounts/${payload.account.id}/contacts/${sender.id}`, {
         method: "PUT",
@@ -710,7 +760,10 @@ app.post("/api/analytics/:inboxId/adjust", authMiddleware, (req, res) => {
 });
 
 // ── Auth Middleware & Login ───────────────────────────────────────────────────
-const ADMIN_TOKEN = "metasync_admin_secret_token";
+// Definir ADMIN_TOKEN no ambiente. O fallback mantém o valor antigo só para a migração
+// não quebrar os links de agenda já gravados nos contatos do Chatwoot.
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "metasync_admin_secret_token";
+if (!process.env.ADMIN_TOKEN) console.warn("[WARN] ADMIN_TOKEN não definido no ambiente — usando valor padrão antigo");
 
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
@@ -961,6 +1014,91 @@ app.delete("/api/calendar/:inboxId/events/:eventId", authMiddleware, async (req,
     console.error("Erro no Calendar DELETE:", error.message);
     res.status(500).json({ error: "Erro ao excluir evento." });
   }
+});
+
+// ── Leads do Formulário Instantâneo da Meta ───────────────────────────────────
+// Env: META_LEADGEN_VERIFY_TOKEN (verificação do webhook), META_APP_SECRET (assinatura,
+// opcional) e META_LEADS_TOKEN (token com leads_retrieval para ler os dados do lead).
+// Deve vir ANTES de /webhook/:inboxId para não ser capturado por ele.
+app.get("/webhook/meta-leads", (req, res) => {
+  const expected = process.env.META_LEADGEN_VERIFY_TOKEN;
+  if (expected && req.query["hub.mode"] === "subscribe" && req.query["hub.verify_token"] === expected) {
+    return res.status(200).send(req.query["hub.challenge"]);
+  }
+  res.sendStatus(403);
+});
+
+app.post("/webhook/meta-leads", (req, res) => {
+  const secret = process.env.META_APP_SECRET;
+  if (secret) {
+    const sig = String(req.headers["x-hub-signature-256"] || "").replace("sha256=", "");
+    const expected = crypto.createHmac("sha256", secret).update(req.rawBody || "").digest("hex");
+    const ok = sig.length === expected.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+    if (!ok) return res.sendStatus(403);
+  }
+  res.sendStatus(200); // responde já; a Meta reenvia se demorar
+
+  const token = process.env.META_LEADS_TOKEN;
+  for (const entry of req.body?.entry || []) {
+    for (const ch of entry.changes || []) {
+      if (ch.field !== "leadgen") continue;
+      const leadId = ch.value?.leadgen_id;
+      if (!leadId || !token) {
+        if (!token) log("warn", "system", `Lead ${leadId} recebido, mas META_LEADS_TOKEN não está configurado`);
+        continue;
+      }
+      fetch(`${META_CAPI_BASE}/${leadId}?fields=field_data&access_token=${token}`)
+        .then(r => r.json())
+        .then(j => {
+          if (j.error) throw new Error(j.error.message);
+          const f = Object.fromEntries((j.field_data || []).map(x => [x.name, x.values?.[0]]));
+          const ok = rememberLead(leadId, { phone: f.phone_number || f.phone, email: f.email });
+          log(ok ? "success" : "warn", "system", `Lead ${leadId} ${ok ? "vinculado a telefone/e-mail" : "sem telefone/e-mail utilizável"}`);
+        })
+        .catch(err => log("error", "system", `Erro ao ler lead ${leadId}: ${err.message}`));
+    }
+  }
+});
+
+// Assina o app nos leads (leadgen) das Páginas. Sem body, assina todas as Páginas que o
+// META_LEADS_TOKEN enxerga, então cliente novo = dar acesso à Página no Business Manager
+// e chamar esta rota. Com { pageId } assina só aquela.
+app.post("/api/leads/subscribe", authMiddleware, async (req, res) => {
+  const token = process.env.META_LEADS_TOKEN;
+  if (!token) return res.status(400).json({ error: "META_LEADS_TOKEN não configurado" });
+  try {
+    let pages;
+    if (req.body?.pageId) {
+      const r = await (await fetch(`${META_CAPI_BASE}/${req.body.pageId}?fields=id,name,access_token&access_token=${token}`)).json();
+      if (r.error) return res.status(400).json({ error: r.error.message });
+      pages = [r];
+    } else {
+      const r = await (await fetch(`${META_CAPI_BASE}/me/accounts?fields=id,name,access_token&limit=200&access_token=${token}`)).json();
+      if (r.error) return res.status(400).json({ error: r.error.message });
+      pages = r.data || [];
+    }
+    const resultados = [];
+    for (const p of pages) {
+      let status = "sem token de Página";
+      if (p.access_token) {
+        const body = new URLSearchParams({ subscribed_fields: "leadgen", access_token: p.access_token });
+        const j = await (await fetch(`${META_CAPI_BASE}/${p.id}/subscribed_apps`, { method: "POST", body })).json();
+        status = j.success ? "assinada" : `erro: ${j.error?.message || "desconhecido"}`;
+      }
+      resultados.push({ pageId: p.id, nome: p.name, status });
+      log(status === "assinada" ? "success" : "warn", "system", `Leadgen | Página ${p.name || p.id}: ${status}`);
+    }
+    res.json({ ok: true, paginas: resultados });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Cadastro manual/automação (Zapier, Make, exportação): { lead_id, phone, email } ou lista deles.
+app.post("/api/leads", authMiddleware, (req, res) => {
+  const items = Array.isArray(req.body) ? req.body : [req.body];
+  const salvos = items.filter(i => rememberLead(i?.lead_id, { phone: i?.phone, email: i?.email })).length;
+  res.json({ ok: true, recebidos: items.length, salvos });
 });
 
 // ── Webhook endpoint ──────────────────────────────────────────────────────────
