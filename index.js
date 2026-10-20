@@ -550,10 +550,16 @@ function agendaUrlFor(inboxId) {
   return `https://metasync.agenciaabrahao.com.br/calendar-widget.html?token=${ADMIN_TOKEN}&inboxId=${inboxId}`;
 }
 
+// Usa o token do cliente; se faltar, reaproveita o de qualquer outro cliente (mesma instância do Chatwoot).
+function chatwootTokenFor(client) {
+  return client.chatwootAccessToken
+    || Object.values(loadClients()).map(c => c.chatwootAccessToken).find(Boolean);
+}
+
 async function setAgendaLink(client, accountId, contactId, currentAttrs, inboxId) {
   const res = await fetch(`${CHATWOOT_URL}/api/v1/accounts/${accountId}/contacts/${contactId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", "api_access_token": client.chatwootAccessToken },
+    headers: { "Content-Type": "application/json", "api_access_token": chatwootTokenFor(client) },
     body: JSON.stringify({ custom_attributes: { ...(currentAttrs || {}), link_da_agenda: agendaUrlFor(inboxId) } }),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -578,7 +584,7 @@ async function processWebhook(payload, client, inboxId) {
   // ── conversation_created → Etapa Inicial ─────────────────────────────────────
   if (eventType === "conversation_created") {
     const agendaSender = payload?.meta?.sender;
-    if (client.chatwootAccessToken && payload?.account?.id && agendaSender?.id) {
+    if (chatwootTokenFor(client) && payload?.account?.id && agendaSender?.id) {
       setAgendaLink(client, payload.account.id, agendaSender.id, agendaSender.custom_attributes, inboxId)
         .then(() => log("info", inboxId, `Agenda auto-preenchida para contato ${agendaSender.id}`))
         .catch(err => log("error", inboxId, `Erro ao auto-preencher agenda: ${err.message}`));
@@ -1073,14 +1079,16 @@ app.delete("/api/calendar/:inboxId/events/:eventId", authMiddleware, async (req,
 app.post("/api/calendar/:inboxId/backfill-link", authMiddleware, async (req, res) => {
   const { inboxId } = req.params;
   const client = loadClients()[inboxId];
-  if (!client?.chatwootAccessToken) return res.status(400).json({ error: "Cliente sem chatwootAccessToken configurado." });
+  if (!client) return res.status(404).json({ error: "Cliente não encontrado." });
+  const cwToken = chatwootTokenFor(client);
+  if (!cwToken) return res.status(400).json({ error: "Nenhum chatwootAccessToken configurado." });
   const accountId = req.query.accountId || 1;
   const done = new Set();
   let failed = 0;
   try {
     for (let page = 1; page <= 500; page++) {
       const r = await fetch(`${CHATWOOT_URL}/api/v1/accounts/${accountId}/conversations?inbox_id=${inboxId}&status=all&page=${page}`, {
-        headers: { "api_access_token": client.chatwootAccessToken },
+        headers: { "api_access_token": cwToken },
       });
       if (!r.ok) throw new Error(`Chatwoot HTTP ${r.status}`);
       const convs = (await r.json())?.data?.payload || [];
