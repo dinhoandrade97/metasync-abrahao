@@ -545,6 +545,20 @@ async function resolveKanbanInbox(payload, client) {
 }
 // </resolveKanbanInbox>
 
+// ─── Link da agenda no contato (Chatwoot) ─────────────────────────────────────
+function agendaUrlFor(inboxId) {
+  return `https://metasync.agenciaabrahao.com.br/calendar-widget.html?token=${ADMIN_TOKEN}&inboxId=${inboxId}`;
+}
+
+async function setAgendaLink(client, accountId, contactId, currentAttrs, inboxId) {
+  const res = await fetch(`${CHATWOOT_URL}/api/v1/accounts/${accountId}/contacts/${contactId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "api_access_token": client.chatwootAccessToken },
+    body: JSON.stringify({ custom_attributes: { ...(currentAttrs || {}), link_da_agenda: agendaUrlFor(inboxId) } }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
 // ─── Process webhook payload ──────────────────────────────────────────────────
 const recentEvents = new Set();
 
@@ -563,6 +577,12 @@ async function processWebhook(payload, client, inboxId) {
 
   // ── conversation_created → Etapa Inicial ─────────────────────────────────────
   if (eventType === "conversation_created") {
+    const agendaSender = payload?.meta?.sender;
+    if (client.chatwootAccessToken && payload?.account?.id && agendaSender?.id) {
+      setAgendaLink(client, payload.account.id, agendaSender.id, agendaSender.custom_attributes, inboxId)
+        .then(() => log("info", inboxId, `Agenda auto-preenchida para contato ${agendaSender.id}`))
+        .catch(err => log("error", inboxId, `Erro ao auto-preencher agenda: ${err.message}`));
+    }
     const stages = Object.entries(client.stageMap || {});
     if (stages.length === 0) {
       log("info", inboxId, "conversation_created recebido mas nenhuma etapa configurada — ignorado");
@@ -597,29 +617,6 @@ async function processWebhook(payload, client, inboxId) {
       sendToGA4(client.ga4MeasurementId, client.ga4ApiSecret, eventData, convId, inboxId)
     ]);
 
-    // Atualizar custom attribute do contato com o link da agenda
-    if (client.chatwootAccessToken && payload?.account?.id && sender?.id) {
-      const chatwootUrl = "https://chatwoot.agenciaabrahao.com.br";
-      const agendaUrl = `https://metasync.agenciaabrahao.com.br/calendar-widget.html?token=${ADMIN_TOKEN}&inboxId=${inboxId}`;
-      
-      fetch(`${chatwootUrl}/api/v1/accounts/${payload.account.id}/contacts/${sender.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "api_access_token": client.chatwootAccessToken
-        },
-        body: JSON.stringify({
-          custom_attributes: {
-            ...(sender.custom_attributes || {}),
-            link_da_agenda: agendaUrl
-          }
-        })
-      }).then(r => r.json()).then(res => {
-        if (res.id) log("info", inboxId, `Agenda auto-preenchida para contato ${sender.id}`);
-      }).catch(err => {
-        log("error", inboxId, `Erro ao auto-preencher agenda: ${err.message}`);
-      });
-    }
     return;
   }
 
@@ -1068,6 +1065,38 @@ app.delete("/api/calendar/:inboxId/events/:eventId", authMiddleware, async (req,
   } catch (error) {
     console.error("Erro no Calendar DELETE:", error.message);
     res.status(500).json({ error: "Erro ao excluir evento." });
+  }
+});
+
+// Preenche link_da_agenda em todos os contatos que já têm conversa no inbox.
+// Uso: POST /api/calendar/:inboxId/backfill-link?accountId=1  (Authorization: Bearer ADMIN_TOKEN)
+app.post("/api/calendar/:inboxId/backfill-link", authMiddleware, async (req, res) => {
+  const { inboxId } = req.params;
+  const client = loadClients()[inboxId];
+  if (!client?.chatwootAccessToken) return res.status(400).json({ error: "Cliente sem chatwootAccessToken configurado." });
+  const accountId = req.query.accountId || 1;
+  const done = new Set();
+  let failed = 0;
+  try {
+    for (let page = 1; page <= 500; page++) {
+      const r = await fetch(`${CHATWOOT_URL}/api/v1/accounts/${accountId}/conversations?inbox_id=${inboxId}&status=all&page=${page}`, {
+        headers: { "api_access_token": client.chatwootAccessToken },
+      });
+      if (!r.ok) throw new Error(`Chatwoot HTTP ${r.status}`);
+      const convs = (await r.json())?.data?.payload || [];
+      if (convs.length === 0) break;
+      for (const c of convs) {
+        const sender = c.meta?.sender;
+        if (!sender?.id || done.has(sender.id)) continue;
+        done.add(sender.id);
+        try { await setAgendaLink(client, accountId, sender.id, sender.custom_attributes, inboxId); }
+        catch { failed++; }
+      }
+    }
+    log("info", inboxId, `Backfill link_da_agenda: ${done.size - failed} ok, ${failed} falhas`);
+    res.json({ contatos: done.size, falhas: failed });
+  } catch (error) {
+    res.status(500).json({ error: error.message, contatos: done.size, falhas: failed });
   }
 });
 
